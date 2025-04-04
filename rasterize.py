@@ -166,12 +166,33 @@ def dask_coverage(
 
 def coverage_ee(
     obj: xr.Dataset | xr.DataArray,
-    geometries: gpd.GeoDataFrame,
+    geometries: Union["gpd.GeoDataFrame", "dask_geopandas.GeoDataFrame"],
     *,
     xdim="x",
     ydim="y",
     coverage_weight="fraction",
-) -> xr.DataArray | xr.Dataset:
+) -> xr.DataArray:
+    """
+    Returns "coverage" fractions for each pixel for each geometry calculated using exactextract.
+
+    Parameters
+    ----------
+    obj : xr.DataArray | xr.Dataset
+        Xarray object used to extract the grid
+    geometries: GeoDataFrame | DaskGeoDataFrame
+        Geometries used for to calculate coverage
+    xdim: str
+        Name of the "x" dimension on ``obj``.
+    ydim: str
+        Name of the "y" dimension on ``obj``.
+    coverage_weight: {"fraction", "none", "area_cartesian", "area_spherical_m2", "area_spherical_km2"}
+        Weights to estimate, passed directly to exactextract.
+
+    Returns
+    -------
+    DataArray
+        3D dataarray with coverage fraction. The additional dimension is "geometry".
+    """
     if "spatial_ref" not in obj.coords:
         raise ValueError("Xarray object must contain the `spatial_ref` variable.")
     # FIXME: assert obj.crs == geometries.crs
@@ -299,6 +320,8 @@ def rasterize_rio(
     """
     Dask-aware wrapper around ``rasterio.features.rasterize``.
 
+    Returns a 2D DataArray with integer codes for cells that are within the provided geometries.
+
     Parameters
     ----------
     obj: xr.Dataset or xr.DataArray
@@ -318,6 +341,11 @@ def rasterize_rio(
     env: rasterio.Env
         Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX`
         by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
+
+    Returns
+    -------
+    DataArray
+        2D DataArray with geometries "burned in"
     """
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(
@@ -457,7 +485,35 @@ def geometry_clip_rio(
     invert: bool = False,
     geoms_rechunk_size: int | None = None,
     env: rio.Env | None = None,
-):
+) -> xr.DataArray:
+    """
+    Dask-ified version of rioxarray.clip
+
+    Parameters
+    ----------
+    obj : xr.DataArray | xr.Dataset
+        Xarray object used to extract the grid
+    geometries: GeoDataFrame | DaskGeoDataFrame
+        Geometries used for clipping
+    xdim: str
+        Name of the "x" dimension on ``obj``.
+    ydim: str
+        Name of the "y" dimension on ``obj``
+    all_touched: bool
+        Passed to rasterio
+    invert: bool
+        Whether to preserve values inside the geometry.
+    geoms_rechunk_size: int | None = None,
+        Chunksize for geometry dimension of the output.
+    env: rasterio.Env
+        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX`
+        by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
+    
+    Returns
+    -------
+    DataArray
+        3D dataarray with coverage fraction. The additional dimension is "geometry".
+    """
     invert = not invert  # rioxarray clip convention -> rasterio geometry_mask convention
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(
