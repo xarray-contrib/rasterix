@@ -61,11 +61,12 @@ Below is a proposal for (2).
 ## Proposal for transform index
 
 We design RasterIndex as a wrapper around **one** of many transform based indexes:
-1.  AffineTransformIndex ↔ GeoTransform
-2.  ModelTransformationIndex ↔ ModelTransformationTag
-3.  ModelTiepointScaleIndex ↔ ModelTiepointTag + ModelPixelScaleTag
-4.  GCPIndex ↔ Ground Control Points
-5.  RPCIndex ↔ Rational Polynomial Coefficients
+1. AffineTransformIndex ↔ GeoTransform
+2. ModelTransformationIndex ↔ ModelTransformationTag
+3. ModelTiepointScaleIndex ↔ ModelTiepointTag + ModelPixelScaleTag
+4. GCPIndex ↔ Ground Control Points
+5. RPCIndex ↔ Rational Polynomial Coefficients
+6. Subsampled auxiliary coordinates, detailed in [CF section 8.3](https://cfconventions.org/Data/cf-conventions/cf-conventions-1.12/cf-conventions.html#compression-by-coordinate-subsampling) and equivalent to GDAL's [geolocation arrays](https://gdal.org/en/stable/development/rfc/rfc4_geolocate.html) with `PIXEL_STEP` and/or LINE_STEP` > 1. 
 
 Each of the wrapped index has an associated transform:
 ```python
@@ -88,10 +89,14 @@ class RasterTransform:
 
     def from_rpcs(?) -> Self:
         ...
+        
+    def from_geolocation_arrays(?) -> Self:
+        ...
 ```
 
 ### Read-time
 These transforms are constructed by **popping** the relevant information from a user-provided source.
+This is analogous to an "encode/decode" workflow we currently have in Xarray.
 ```python
 transform = rasterix.RasterTransform.from_geotransform(ds.spatial_ref.attrs)
 # transform = rasterix.RasterTransform.from_tiepoints(ds.band_data.attrs)
@@ -119,3 +124,14 @@ Here:
 1. `SELF` could mean write to the object (Dataset | DataArray) attrs
 2. `formats` allow you to record the same information in multiple ways
 3. `.rio.write_transform` could just dispatch to this method.
+
+
+## Appendix
+
+### Encode/decode workflow for subsampled coordinates
+
+Taking the example 8.3 from [CF section 8.3](https://cfconventions.org/Data/cf-conventions/cf-conventions-1.12/cf-conventions.html#compression-by-coordinate-subsampling), the decode step may consist in:
+1. turn the tie point coordinate variables `lat(tp_yc, tp_xc)` and `lon(tp_yc, tp_xc)` into `lat(yc, xc)` and `lon(yc, xc)` in to Xarray coordinates associated with a custom transformation index that stores only the tie points. In other words, uncompress the dimensions of the `lat` & `lon` coordinates without uncompressing their data.
+2. also remove the tie point index variables and the interpolation variable, and track their data / metadata internally in the index
+
+The encode step would then consist in restoring the compressed tie point coordinate & index variables as well as the interpolation variable.
