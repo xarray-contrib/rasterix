@@ -2,8 +2,8 @@ import textwrap
 from collections.abc import Hashable, Mapping
 from typing import Any
 
-import numpy as np
 import pandas as pd
+import numpy as np
 from affine import Affine
 from xarray import DataArray, Index, Variable
 from xarray.core.coordinate_transform import CoordinateTransform
@@ -11,6 +11,7 @@ from xarray.core.coordinate_transform import CoordinateTransform
 # TODO: import from public API once it is available
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
+
 
 
 class AffineTransform(CoordinateTransform):
@@ -256,7 +257,9 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
 
         return result
 
-    def to_pandas_index(self) -> pd.Index:
+    def to_pandas_index(self) -> "pd.Index":
+        import pandas as pd
+
         values = self.transform.generate_coords()
         return pd.Index(values[self.dim])
 
@@ -415,7 +418,7 @@ class RasterIndex(Index):
             for k, index in self._wrapped_indexes.items()
         )
 
-    def to_pandas_index(self) -> pd.Index:
+    def to_pandas_index(self) -> "pd.Index":
         # conversion is possible only if this raster index encapsulates
         # exactly one AxisAffineTransformIndex or a PandasIndex associated
         # to either the x or y axis (1-dimensional) coordinate.

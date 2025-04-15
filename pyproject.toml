@@ -1,0 +1,98 @@
+[project]
+name = "rasterix"
+description = "Raster extensions for Xarray"
+license = {file = "LICENSE"}
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["xarray"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "affine",
+    "pandas>=2",
+    "numpy>=2",
+    "xarray>=2025",
+]
+dynamic=["version"]
+
+[build-system]
+requires = [
+    "affine",
+    "numpy>=2",
+    "pandas>=2",
+    "xarray>=2025",
+    "setuptools>=61.0.0",
+    "setuptools_scm[toml]>=7.0",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["rasterix"]
+
+[tool.setuptools.dynamic]
+version = {attr = "rasterix.__version__"}
+
+[tool.setuptools_scm]
+fallback_version = "999"
+write_to = "rasterix/_version.py"
+write_to_template= '__version__ = "{version}"'
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+builtins = ["ellipsis"]
+exclude = [
+    ".eggs",
+    "doc",
+]
+
+[tool.ruff.lint]
+# E402: module level import not at top of file
+# E501: line too long - let black worry about that
+# E731: do not assign a lambda expression, use a def
+ignore = [
+    "E402",
+    "E501",
+    "E731",
+]
+select = [
+    # Bugbear
+    # "B",
+    # Pyflakes
+    "F",
+    # Pycodestyle
+    "E",
+    "W",
+    # isort
+    "I",
+    # Pyupgrade
+    "UP",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["rasterix"]
+known-third-party = [
+    "xarray"
+]
+
+[tool.ruff.format]
+# Enable reformatting of code snippets in docstrings.
+docstring-code-format = true
+
+[tool.pytest.ini_options]
+addopts = "--tb=short"
+minversion = "7"
+testpaths = ["tests"]
+
+[tool.codespell]
+ignore-words-list = "nd,nax,coo"
+skip = "*.html"
