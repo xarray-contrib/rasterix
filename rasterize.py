@@ -1,17 +1,17 @@
-from functools import partial
 from collections.abc import Sequence
+from functools import partial
 from typing import Any, Literal, Union
 
 import geopandas as gpd
 import numpy as np
+import odc.geo.xr  # noqa
+import rasterio as rio
 import xarray as xr
 from exactextract import exact_extract
 from exactextract.raster import NumPyRasterSource
 from odc.geo.geobox import GeoboxTiles
-import odc.geo.xr  # noqa
-import rasterio as rio
-from rasterio.features import MergeAlg, rasterize, geometry_mask
 from osgeo import gdal
+from rasterio.features import MergeAlg, geometry_mask, rasterize
 
 MIN_CHUNK_SIZE = 2  # exactextract cannot handle arrays of size 1.
 
@@ -145,9 +145,7 @@ def dask_coverage(
     import dask.array
 
     if any(c == 1 for c in x.chunks) or any(c == 1 for c in y.chunks):
-        raise ValueError(
-            "exactextract does not support a chunksize of 1. Please rechunk to avoid this"
-        )
+        raise ValueError("exactextract does not support a chunksize of 1. Please rechunk to avoid this")
 
     return dask.array.blockwise(
         coverage_np_dask_wrapper,
@@ -348,9 +346,7 @@ def rasterize_rio(
         2D DataArray with geometries "burned in"
     """
     if xdim not in obj.dims or ydim not in obj.dims:
-        raise ValueError(
-            f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}"
-        )
+        raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
     box = obj.odc.geobox
     rasterize_kwargs = dict(all_touched=all_touched, merge_alg=merge_alg)
     # FIXME: box.crs == geometries.crs
@@ -464,9 +460,7 @@ def np_geometry_mask(
         # FIXME: figure out a good default
         env = rio.Env()
     with env:
-        res = geometry_mask(
-            geometries, out_shape=tile.shape, transform=tile.affine, **kwargs
-        )
+        res = geometry_mask(geometries, out_shape=tile.shape, transform=tile.affine, **kwargs)
     if clear_cache:
         with rio.Env(GDAL_CACHEMAX=0):
             # attempt to force-clear the GDAL cache
@@ -508,7 +502,7 @@ def geometry_clip_rio(
     env: rasterio.Env
         Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX`
         by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
-    
+
     Returns
     -------
     DataArray
@@ -516,17 +510,13 @@ def geometry_clip_rio(
     """
     invert = not invert  # rioxarray clip convention -> rasterio geometry_mask convention
     if xdim not in obj.dims or ydim not in obj.dims:
-        raise ValueError(
-            f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}"
-        )
+        raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
     box = obj.odc.geobox
     geometry_mask_kwargs = dict(all_touched=all_touched, invert=invert)
 
     if is_in_memory(obj=obj, geometries=geometries):
         geom_array = geometries.to_numpy().squeeze(axis=1)
-        mask = np_geometry_mask(
-            geom_array.tolist(), tile=box, env=env, **geometry_mask_kwargs
-        )
+        mask = np_geometry_mask(geom_array.tolist(), tile=box, env=env, **geometry_mask_kwargs)
     else:
         from dask.array import map_blocks
 
