@@ -3,6 +3,8 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Hashable, Mapping
 from typing import Any, TypeVar
+from collections.abc import Hashable, Mapping
+from collections.abc import Hashable, Iterable, Mapping, Sequence
 from typing import Any, Self
 
 import numpy as np
@@ -502,6 +504,17 @@ class RasterIndex(Index):
             crs=None,
         )
 
+    @classmethod
+    def concat(
+        cls,
+        indexes: Sequence[Self],
+        dim: Hashable,
+        positions: Iterable[Iterable[int]] | None = None,
+    ) -> Self:
+        if len(indexes) == 1:
+            return next(iter(indexes))
+        raise NotImplementedError
+
     def join(self, other, how) -> "RasterIndex":
         if not isinstance(other, RasterIndex):
             raise ValueError(
@@ -547,20 +560,36 @@ class RasterIndex(Index):
         tol: float = 0.01
 
         indexers = {}
-        indexers["x"] = slice_bounds(theirs.left, inter.left, inter.right, spacing=dx, tol=tol)
-        indexers["y"] = slice_bounds(theirs.top, inter.bottom, inter.top, spacing=dy, tol=tol)
+        indexers["x"] = get_indexer(
+            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other._shape["x"]
+        )
+        indexers["y"] = get_indexer(
+            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape["y"]
+        )
+        import ipdb
+
+        ipdb.set_trace()
         return indexers
 
 
-def slice_bounds(off, start, stop, spacing, tol):
+def get_indexer(off, our_off, start, stop, spacing, tol, size) -> np.ndarray:
     from math import ceil
 
     from odc.geo.math import maybe_int
 
     istart = ceil(maybe_int((start - off) / spacing, tol))
-    istop = ceil(maybe_int((stop - off) / spacing, tol))
 
-    return slice(istart, istop)
+    ours_istart = ceil(maybe_int((start - our_off) / spacing, tol))
+    ours_istop = ceil(maybe_int((stop - our_off) / spacing, tol))
+
+    idxr = np.concatenate(
+        [
+            np.full((istart,), fill_value=-1),
+            np.arange(ours_istart, ours_istop),
+            np.full((size - istart - (ours_istop - ours_istart),), fill_value=-1),
+        ]
+    )
+    return idxr
 
 
 def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
