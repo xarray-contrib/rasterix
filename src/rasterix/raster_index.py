@@ -497,7 +497,7 @@ class RasterIndex(Index):
     @property
     def bbox(self) -> BoundingBox:
         return BoundingBox.from_transform(
-            shape=tuple(self._shape[k] for k in ("x", "y")),
+            shape=tuple(self._shape[k] for k in ("y", "x")),
             transform=self.combined_affine_transform() * Affine.translation(-0.5, -0.5),
             crs=None,
         )
@@ -530,7 +530,9 @@ class RasterIndex(Index):
         new_affine, Nx, Ny = bbox_to_affine(new_bbox, rx=affine.a, ry=affine.e)
 
         # TODO: set xdim, ydim explicitly
-        return self.from_transform(new_affine, width=Nx, height=Ny)
+        new_index = self.from_transform(new_affine, width=Nx, height=Ny)
+        assert new_index.bbox == new_bbox
+        return new_index
 
     def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
         affine = self.combined_affine_transform()
