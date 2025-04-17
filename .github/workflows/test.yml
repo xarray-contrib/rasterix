@@ -44,8 +44,8 @@ jobs:
       - name: Run Tests
         run: |
           hatch env run --env test.py${{ matrix.python-version }} run-coverage
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          verbose: true # optional (default = false)
+      # - name: Upload coverage
+      #   uses: codecov/codecov-action@v5
+      #   with:
+      #     token: ${{ secrets.CODECOV_TOKEN }}
+      #     verbose: true # optional (default = false)
