@@ -3,11 +3,16 @@ from __future__ import annotations
 import textwrap
 from collections.abc import Hashable, Mapping
 from typing import Any, TypeVar
+from typing import Any, Self
 
 import numpy as np
 import pandas as pd
 from affine import Affine
 from xarray import Coordinates, DataArray, Dataset, Index, Variable
+from xarray import DataArray, Index, Variable
+from odc.geo import BoundingBox
+from odc.geo.geom import bbox_intersection, bbox_union
+from xarray import DataArray, Index, Variable
 from xarray.core.coordinate_transform import CoordinateTransform
 
 # TODO: import from public API once it is available
@@ -489,6 +494,14 @@ class RasterIndex(Index):
             aff = index.affine
         return aff * Affine.translation(-0.5, -0.5)
 
+    @property
+    def bbox(self) -> BoundingBox:
+        return BoundingBox.from_transform(
+            shape=tuple(self._shape[k] for k in ("x", "y")),
+            transform=self.combined_affine_transform() * Affine.translation(-0.5, -0.5),
+            crs=None,
+        )
+
     def join(self, other, how) -> "RasterIndex":
         if not isinstance(other, RasterIndex):
             raise ValueError(
@@ -505,10 +518,68 @@ class RasterIndex(Index):
         trans = Affine.translation(-0.5, -0.5)
         ours = self.transform() * trans
         theirs = other.transform() * trans
+        ours, theirs = as_compatible_bboxes(self, other)
 
-        our_shape = tuple(self._shape[k] for k in ("x", "y"))
-        their_shape = tuple(self._shape[k] for k in ("x", "y"))
-        new_affine, Nx, Ny = compute_bounding_box_affine(ours, our_shape, theirs, their_shape, how=how)
+        if how == "outer":
+            new_bbox = bbox_union([ours, theirs])
+            print(new_bbox, ours, theirs)
+        elif how == "inner":
+            new_bbox = bbox_intersection([ours, theirs])
+
+        affine = self.combined_affine_transform()
+        new_affine, Nx, Ny = bbox_to_affine(new_bbox, rx=affine.a, ry=affine.e)
 
         # TODO: set xdim, ydim explicitly
         return self.from_transform(new_affine, width=Nx, height=Ny)
+
+    def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
+        affine = self.combined_affine_transform()
+        ours, theirs = as_compatible_bboxes(self, other)
+        inter = bbox_intersection([ours, theirs])
+        dx = affine.a
+        dy = affine.e
+
+        # Fraction of a pixel that can be ignored, defaults to 1/100. Bounding box of the output
+        # geobox is allowed to be smaller than supplied bounding box by that amount.
+        # FIXME: translate user-provided `tolerance` to `tol`
+        tol: float = 0.01
+
+        indexers = {}
+        indexers["x"] = slice_bounds(theirs.left, inter.left, inter.right, spacing=dx, tol=tol)
+        indexers["y"] = slice_bounds(theirs.top, inter.bottom, inter.top, spacing=dy, tol=tol)
+        return indexers
+
+
+def slice_bounds(off, start, stop, spacing, tol):
+    from math import ceil
+
+    from odc.geo.math import maybe_int
+
+    istart = ceil(maybe_int((start - off) / spacing, tol))
+    istop = ceil(maybe_int((stop - off) / spacing, tol))
+
+    return slice(istart, istop)
+
+
+def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
+    # Fraction of a pixel that can be ignored, defaults to 1/100. Bounding box of the output
+    # geobox is allowed to be smaller than supplied bounding box by that amount.
+    # FIXME: translate user-provided `tolerance` to `tol`
+    tol: float = 0.01
+
+    from odc.geo.math import snap_grid
+
+    offx, nx = snap_grid(bbox.left, bbox.right, rx, 0, tol=tol)
+    offy, ny = snap_grid(bbox.bottom, bbox.top, ry, 0, tol=tol)
+
+    affine = Affine.translation(offx, offy) * Affine.scale(rx, ry)
+
+    return affine, nx, ny
+
+
+def as_compatible_bboxes(r1: RasterIndex, r2: RasterIndex) -> tuple[BoundingBox, BoundingBox]:
+    r1_transform = r1.combined_affine_transform()
+    r2_transform = r2.combined_affine_transform()
+    _assert_transforms_are_compatible(r1_transform, r2_transform)
+
+    return r1.bbox, r2.bbox
