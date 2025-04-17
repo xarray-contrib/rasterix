@@ -10,10 +10,26 @@ It currently has two pieces.
 
 ## RasterIndex
 
-See `rasterix/raster_index.py` and `notebooks/test_raster_index.ipynb` for a brief demo.
+See `src/rasterix/raster_index.py` and `notebooks/test_raster_index.ipynb` for a brief demo.
 
 ## Dask-aware rasterization wrappers
 
-See `rasterize.py` for dask-aware wrappers around [`exactextract`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L165), [`rasterio.features.rasterize`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L307), and [`rasterio.features.geometry_mask`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L472).
+See `src/rasterix/rasterize.py` for dask-aware wrappers around [`exactextract`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L165), [`rasterio.features.rasterize`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L307), and [`rasterio.features.geometry_mask`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L472).
 
 This code is likely to move elsewhere!
+
+## Trying it out
+
+### Installing and testing from source
+
+1. Clone the repo
+   ```
+   git remote add upstream git@github.com:dcherian/rasterix.git
+   cd rasterix
+   ```
+1. [Install hatch](https://hatch.pypa.io/1.12/install/)
+1. Run the tests
+   ```
+   hatch env run --env test.py3.13 run-pytest  # Run the tests without coverage reports
+   hatch env run --env test.py3.13 run-coverage-html   # Run the tests with an html coverage report
+   ```
