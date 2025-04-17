@@ -1,3 +1,14 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/docs",
+  "/notebooks"
+]
+
 [project]
 name = "rasterix"
 description = "Raster extensions for Xarray"
@@ -22,28 +33,22 @@ dependencies = [
     "xarray>=2025",
 ]
 dynamic=["version"]
-
-[build-system]
-requires = [
-    "affine",
-    "numpy>=2",
-    "pandas>=2",
-    "xarray>=2025",
-    "setuptools>=61.0.0",
-    "setuptools_scm[toml]>=7.0",
+[project.optional-dependencies]
+rasterize = [
+    "dask-geopandas",
+    "odc-geo",
+    "rasterio",
+    "exactextract",
+    "rioxarray",
 ]
-build-backend = "setuptools.build_meta"
+io = [
+    "xarray[io]"
+]
+[tool.hatch]
+version.source = "vcs"
 
-[tool.setuptools]
-packages = ["rasterix"]
-
-[tool.setuptools.dynamic]
-version = {attr = "rasterix.__version__"}
-
-[tool.setuptools_scm]
-fallback_version = "999"
-write_to = "rasterix/_version.py"
-write_to_template= '__version__ = "{version}"'
+[tool.hatch.build]
+hooks.vcs.version-file = "src/rasterix/_version.py"
 
 [tool.ruff]
 line-length = 110
@@ -53,6 +58,27 @@ exclude = [
     ".eggs",
     "doc",
 ]
+
+[tool.hatch.envs.test]
+dependencies = [
+    "coverage",
+    "pytest",
+    "pytest-cov",
+    "geodatasets",
+]
+features = [
+    "rasterize",
+    "io",
+]
+
+[tool.hatch.envs.test.scripts]
+run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+run-pytest = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
+run-mypy = "mypy src"
+list-env = "pip list"
 
 [tool.ruff.lint]
 # E402: module level import not at top of file
@@ -95,3 +121,8 @@ testpaths = ["tests"]
 [tool.codespell]
 ignore-words-list = "nd,nax,coo"
 skip = "*.html"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+namespace_packages = false
