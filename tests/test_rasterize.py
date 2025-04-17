@@ -1,10 +1,11 @@
 import dask_geopandas as dgpd
 import geodatasets
 import geopandas as gpd
+import rioxarray  # noqa
 import xarray as xr
 from xarray.tests import raise_if_dask_computes
 
-from rasterize import coverage_ee, rasterize_rio
+from rasterix.rasterize import coverage_ee, rasterize_rio
 
 
 def test_coverage():

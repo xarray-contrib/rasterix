@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from collections.abc import Sequence
 from functools import partial
-from typing import Any, Literal, Union
+from typing import TYPE_CHECKING, Any, Literal
 
 import geopandas as gpd
 import numpy as np
@@ -10,17 +12,20 @@ import xarray as xr
 from exactextract import exact_extract
 from exactextract.raster import NumPyRasterSource
 from odc.geo.geobox import GeoboxTiles
-from osgeo import gdal
 from rasterio.features import MergeAlg, geometry_mask, rasterize
 
 MIN_CHUNK_SIZE = 2  # exactextract cannot handle arrays of size 1.
+
+if TYPE_CHECKING:
+    import dask
+    import dask_geopandas
 
 
 def is_in_memory(*, obj, geometries) -> bool:
     return not obj.chunks and isinstance(geometries, gpd.GeoDataFrame)
 
 
-def geometries_as_dask_array(geometries) -> "dask.array.Array":
+def geometries_as_dask_array(geometries) -> dask.array.Array:
     from dask.array import from_array
 
     if isinstance(geometries, gpd.GeoDataFrame):
@@ -59,10 +64,12 @@ def prepare_for_dask(
     return chunks, tiles_array, geom_array
 
 
-def get_dtype(coverage_weight, geometries):
+def get_dtype(coverage_weight, geometries=None):
     if coverage_weight.lower() == "fraction":
         dtype = "float64"
     elif coverage_weight.lower() == "none":
+        if geometries is None:
+            raise ValueError("Geometries is required when using 'none' as the coverage_weight")
         dtype = np.min_scalar_type(len(geometries))
     else:
         raise NotImplementedError
@@ -135,13 +142,13 @@ def coverage_np_dask_wrapper(
 
 
 def dask_coverage(
-    x: "dask.array.Array",
-    y: "dask.array.Array",
+    x: dask.array.Array,
+    y: dask.array.Array,
     *,
-    geom_array: "dask.array.Array",
+    geom_array: dask.array.Array,
     coverage_weight: Literal["fraction", "none"] = "fraction",
     crs: Any,
-) -> "dask.array.Array":
+) -> dask.array.Array:
     import dask.array
 
     if any(c == 1 for c in x.chunks) or any(c == 1 for c in y.chunks):
@@ -164,7 +171,7 @@ def dask_coverage(
 
 def coverage_ee(
     obj: xr.Dataset | xr.DataArray,
-    geometries: Union["gpd.GeoDataFrame", "dask_geopandas.GeoDataFrame"],
+    geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
     *,
     xdim="x",
     ydim="y",
@@ -298,15 +305,14 @@ def rasterize_geometries(
         )
     if clear_cache:
         with rio.Env(GDAL_CACHEMAX=0):
-            # attempt to force-clear the GDAL cache
-            assert gdal.GetCacheMax() == 0
+            assert rio.env.getenv()["GDAL_CACHEMAX"] == 0
     assert res.shape == tile.shape
     return res
 
 
 def rasterize_rio(
     obj: xr.Dataset | xr.DataArray,
-    geometries: Union["gpd.GeoDataFrame", "dask_geopandas.GeoDataFrame"],
+    geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
     *,
     xdim="x",
     ydim="y",
@@ -464,14 +470,14 @@ def np_geometry_mask(
     if clear_cache:
         with rio.Env(GDAL_CACHEMAX=0):
             # attempt to force-clear the GDAL cache
-            assert gdal.GetCacheMax() == 0
+            assert rio.env.getenv()["GDAL_CACHEMAX"] == 0
     assert res.shape == tile.shape
     return res
 
 
 def geometry_clip_rio(
     obj: xr.Dataset | xr.DataArray,
-    geometries: Union["gpd.GeoDataFrame", "dask_geopandas.GeoDataFrame"],
+    geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
     *,
     xdim="x",
     ydim="y",
