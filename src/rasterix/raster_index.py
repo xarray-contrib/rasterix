@@ -32,6 +32,50 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
     return obj.assign_coords(coords)
 
 
+def _assert_transforms_are_compatible(A1: Affine, A2: Affine) -> None:
+    assert A1.a == A2.a
+    assert A1.b == A2.b
+    assert A1.d == A2.d
+    assert A1.e == A2.e
+
+
+def compute_bounding_box_affine(
+    A1: Affine, shape1: tuple[int, int], A2: Affine, shape2: tuple[int, int], *, how: str
+):
+    _assert_transforms_are_compatible(A1, A2)
+
+    # Apply both affine transformations to the corners
+    transformed1 = np.stack([A1 * point for point in [(0, 0), shape1]])
+    transformed2 = np.stack([A2 * point for point in [(0, 0), shape2]])
+
+    # Concatenate transformed points
+    all_points = np.stack([transformed1, transformed2])
+
+    # Compute bounding box min/max
+    if how == "outer":
+        min_x, min_y = all_points.min(axis=(0, 1)).tolist()
+        max_x, max_y = all_points.max(axis=(0, 1)).tolist()
+
+        assert max_x > min_x
+        assert max_y > min_y
+
+        # FIXME: floating point error here
+        Nx = None if A1.a == 0 else int(np.abs((max_x - min_x) / A1.a))
+        Ny = None if A1.e == 0 else int(np.abs((max_y - min_y) / A1.e))
+    else:
+        raise NotImplementedError
+
+    Anew = Affine(
+        A1.a,
+        A1.b,
+        min_x if A1.a > 0 else max_x,
+        A1.d,
+        A1.e,
+        min_y if A1.e > 0 else max_y,  # TODO: handle orientation here
+    )
+    return Anew, Nx, Ny
+
+
 class AffineTransform(CoordinateTransform):
     """Affine 2D transform wrapper."""
 
@@ -304,6 +348,7 @@ class RasterIndex(Index):
     """
 
     _wrapped_indexes: dict[WrappedIndexCoords, WrappedIndex]
+    _shape: dict[str, int]
 
     def __init__(self, indexes: Mapping[WrappedIndexCoords, WrappedIndex]):
         idx_keys = list(indexes)
@@ -321,6 +366,13 @@ class RasterIndex(Index):
         assert axis_dependent ^ axis_independent
 
         self._wrapped_indexes = dict(indexes)
+        if axis_independent:
+            self._shape = {
+                "x": self._wrapped_indexes["x"].axis_transform.size,
+                "y": self._wrapped_indexes["y"].axis_transform.size,
+            }
+        else:
+            self._shape = next(iter(self._wrapped_indexes.values())).dim_size
 
     @classmethod
     def from_transform(
@@ -436,3 +488,27 @@ class RasterIndex(Index):
             index = next(iter(self._wrapped_indexes.values()))
             aff = index.affine
         return aff * Affine.translation(-0.5, -0.5)
+
+    def join(self, other, how) -> "RasterIndex":
+        if not isinstance(other, RasterIndex):
+            raise ValueError(
+                f"Alignment is only supported between RasterIndexes. Received RasterIndex and {type(other)!r} instead"
+            )
+
+        if set(self._wrapped_indexes.keys()) != set(other._wrapped_indexes.keys()):
+            # TODO: better error message
+            raise ValueError(
+                "Alignment is only supported between RasterIndexes, when both contain compatible transforms."
+            )
+
+        # move affines back to top-left corner
+        trans = Affine.translation(-0.5, -0.5)
+        ours = self.transform() * trans
+        theirs = other.transform() * trans
+
+        our_shape = tuple(self._shape[k] for k in ("x", "y"))
+        their_shape = tuple(self._shape[k] for k in ("x", "y"))
+        new_affine, Nx, Ny = compute_bounding_box_affine(ours, our_shape, theirs, their_shape, how=how)
+
+        # TODO: set xdim, ydim explicitly
+        return self.from_transform(new_affine, width=Nx, height=Ny)
