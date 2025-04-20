@@ -209,10 +209,13 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
         label = labels[coord_name]
 
         if isinstance(label, slice):
+            if label.start is None:
+                label = slice(0, label.stop, label.step)
             if label.step is None:
                 # continuous interval slice indexing (preserves the index)
                 pos = self.transform.reverse({coord_name: np.array([label.start, label.stop])})
-                pos = np.round(pos[self.dim]).astype("int")
+                # np.round rounds to even, this way we round upwards
+                pos = np.floor(pos[self.dim] + 0.5).astype("int")
                 new_start = max(pos[0], 0)
                 new_stop = min(pos[1], self.axis_transform.size)
                 return IndexSelResult({self.dim: slice(new_start, new_stop)})
@@ -368,7 +371,7 @@ class RasterIndex(Index):
         for coord_names, index in self._wrapped_indexes.items():
             if not isinstance(coord_names, tuple):
                 coord_names = (coord_names,)
-            index_labels = {k: v for k, v in labels if k in coord_names}
+            index_labels = {k: v for k, v in labels.items() if k in coord_names}
             if index_labels:
                 results.append(index.sel(index_labels, method=method, tolerance=tolerance))
 
@@ -403,3 +406,14 @@ class RasterIndex(Index):
             items += [repr(coord_names) + ":", textwrap.indent(repr(index), "    ")]
 
         return "RasterIndex\n" + "\n".join(items)
+
+    def transform(self) -> Affine:
+        """Returns Affine transform for top-left corners."""
+        if len(self._wrapped_indexes) > 1:
+            x = self._wrapped_indexes["x"].axis_transform.affine
+            y = self._wrapped_indexes["y"].axis_transform.affine
+            aff = Affine(x.a, x.b, x.c, y.d, y.e, y.f)
+        else:
+            index = next(iter(self._wrapped_indexes.values()))
+            aff = index.affine
+        return aff * Affine.translation(-0.5, -0.5)
