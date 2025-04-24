@@ -17,7 +17,7 @@ from xarray.core.indexing import IndexSelResult, merge_sel_results
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
 
-def assign_raster_index(obj: T_Xarray) -> T_Xarray:
+def assign_index(obj: T_Xarray) -> T_Xarray:
     x_dim = obj.rio.x_dim
     y_dim = obj.rio.y_dim
 

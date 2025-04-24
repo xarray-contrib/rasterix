@@ -1,4 +1,4 @@
-from .raster_index import RasterIndex, assign_raster_index
+from .raster_index import RasterIndex, assign_index
 
 
 def _get_version():
@@ -12,4 +12,4 @@ def _get_version():
 
 __version__ = _get_version()
 
-__all__ = ["RasterIndex", "assign_raster_index"]
+__all__ = ["RasterIndex", "assign_index"]
