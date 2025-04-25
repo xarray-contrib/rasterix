@@ -1,16 +1,35 @@
+from __future__ import annotations
+
 import textwrap
 from collections.abc import Hashable, Mapping
-from typing import Any
+from typing import Any, TypeVar
 
 import numpy as np
 import pandas as pd
 from affine import Affine
-from xarray import DataArray, Index, Variable
+from xarray import Coordinates, DataArray, Dataset, Index, Variable
 from xarray.core.coordinate_transform import CoordinateTransform
 
 # TODO: import from public API once it is available
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
+
+from rasterix.rioxarray_compat import guess_dims
+
+T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
+
+
+def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None) -> T_Xarray:
+    if x_dim is None or y_dim is None:
+        guessed_x, guessed_y = guess_dims(obj)
+    x_dim = x_dim or guessed_x
+    y_dim = y_dim or guessed_y
+
+    index = RasterIndex.from_transform(
+        obj.rio.transform(), obj.sizes[x_dim], obj.sizes[y_dim], x_dim=x_dim, y_dim=y_dim
+    )
+    coords = Coordinates.from_xindex(index)
+    return obj.assign_coords(coords)
 
 
 class AffineTransform(CoordinateTransform):
@@ -126,7 +145,7 @@ class AxisAffineTransform(CoordinateTransform):
         assert dims is None or dims == self.dims
         return self.forward({self.dim: np.arange(self.size)})
 
-    def slice(self, slice: slice) -> "AxisAffineTransform":
+    def slice(self, slice: slice) -> AxisAffineTransform:
         start = max(slice.start or 0, 0)
         stop = min(slice.stop or self.size, self.size)
         step = slice.step or 1
@@ -183,7 +202,7 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
 
     def isel(  # type: ignore[override]
         self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]
-    ) -> "AxisAffineTransformIndex | PandasIndex | None":
+    ) -> AxisAffineTransformIndex | PandasIndex | None:
         idxer = indexers[self.dim]
 
         # generate a new index with updated transform if a slice is given
@@ -243,7 +262,7 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
 
         return result
 
-    def to_pandas_index(self) -> "pd.Index":
+    def to_pandas_index(self) -> pd.Index:
         import pandas as pd
 
         values = self.transform.generate_coords()
@@ -306,7 +325,7 @@ class RasterIndex(Index):
     @classmethod
     def from_transform(
         cls, affine: Affine, width: int, height: int, x_dim: str = "x", y_dim: str = "y"
-    ) -> "RasterIndex":
+    ) -> RasterIndex:
         indexes: dict[WrappedIndexCoords, AxisAffineTransformIndex | CoordinateTransformIndex]
 
         # pixel centered coordinates
@@ -331,7 +350,7 @@ class RasterIndex(Index):
         variables: Mapping[Any, Variable],
         *,
         options: Mapping[str, Any],
-    ) -> "RasterIndex":
+    ) -> RasterIndex:
         # TODO: compute bounds, resolution and affine transform from explicit coordinates.
         raise NotImplementedError("Creating a RasterIndex from existing coordinates is not yet supported.")
 
@@ -343,7 +362,7 @@ class RasterIndex(Index):
 
         return new_variables
 
-    def isel(self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]) -> "RasterIndex | None":
+    def isel(self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]) -> RasterIndex | None:
         new_indexes: dict[WrappedIndexCoords, WrappedIndex] = {}
 
         for coord_names, index in self._wrapped_indexes.items():
@@ -388,7 +407,7 @@ class RasterIndex(Index):
             for k, index in self._wrapped_indexes.items()
         )
 
-    def to_pandas_index(self) -> "pd.Index":
+    def to_pandas_index(self) -> pd.Index:
         # conversion is possible only if this raster index encapsulates
         # exactly one AxisAffineTransformIndex or a PandasIndex associated
         # to either the x or y axis (1-dimensional) coordinate.
