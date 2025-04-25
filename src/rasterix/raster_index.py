@@ -14,12 +14,16 @@ from xarray.core.coordinate_transform import CoordinateTransform
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
 
+from rasterix.rioxarray_compat import guess_dims
+
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
 
-def assign_index(obj: T_Xarray) -> T_Xarray:
-    x_dim = obj.rio.x_dim
-    y_dim = obj.rio.y_dim
+def assign_index(obj: T_Xarray, *, x_dim=None, y_dim=None) -> T_Xarray:
+    if x_dim is None or y_dim is None:
+        guessed_x, guessed_y = guess_dims(obj)
+    x_dim = x_dim or guessed_x
+    y_dim = y_dim or guessed_y
 
     index = RasterIndex.from_transform(
         obj.rio.transform(), obj.sizes[x_dim], obj.sizes[y_dim], x_dim=x_dim, y_dim=y_dim
