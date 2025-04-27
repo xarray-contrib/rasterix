@@ -10,7 +10,7 @@ It currently has two pieces.
 
 ## RasterIndex
 
-See `src/rasterix/raster_index.py` and `notebooks/test_raster_index.ipynb` for a brief demo.
+See `src/ rasterix/raster_index.py` and `notebooks/raster_index.ipynb` for a brief demo.
 
 ## Dask-aware rasterization wrappers
 
