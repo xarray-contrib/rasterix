@@ -8,17 +8,25 @@ The intent is to provide reusable building blocks for the many sub-ecosystems ar
 
 It currently has two pieces.
 
-## RasterIndex
+## 1. RasterIndex
 
 See `src/ rasterix/raster_index.py` and `notebooks/raster_index.ipynb` for a brief demo.
 
-## Dask-aware rasterization wrappers
+## 2. Dask-aware rasterization wrappers
 
 See `src/rasterix/rasterize.py` for dask-aware wrappers around [`exactextract`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L165), [`rasterio.features.rasterize`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L307), and [`rasterio.features.geometry_mask`](https://github.com/dcherian/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L472).
 
 This code is likely to move elsewhere!
 
 ## Trying it out
+
+### PyPI
+
+`rasterix` alpha releases are available on pypi
+
+```
+pip install rasterix
+```
 
 ### Installing and testing from source
 
