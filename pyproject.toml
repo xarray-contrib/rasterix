@@ -34,16 +34,23 @@ dependencies = [
 ]
 dynamic=["version"]
 [project.optional-dependencies]
+dask = ["dask-geopandas"]
 rasterize = [
-    "dask-geopandas",
     "odc-geo",
     "rasterio",
-    "exactextract",
     "rioxarray",
 ]
-io = [
-    "xarray[io]"
+exactextract = ["exactextract"]
+test = [
+  "geodatasets",
+  "dask-geopandas",
+  "odc-geo",
+  "rasterio",
+  "rioxarray",
+  "exactextract",
+  "netCDF4"
 ]
+
 [tool.hatch]
 version.source = "vcs"
 
@@ -64,19 +71,14 @@ dependencies = [
     "coverage",
     "pytest",
     "pytest-cov",
-    "geodatasets",
 ]
-features = [
-    "rasterize",
-    "io",
-]
+features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.10", "3.13"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-gpu = "pip install cupy-cuda12x && pytest -m gpu --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 run-pytest = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
@@ -126,6 +128,6 @@ ignore-words-list = "nd,nax,coo"
 skip = "*.html"
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 ignore_missing_imports = true
 namespace_packages = false
