@@ -17,18 +17,18 @@ if TYPE_CHECKING:
 
 MIN_CHUNK_SIZE = 2  # exactextract cannot handle arrays of size 1.
 
+CoverageWeights = Literal["area_spherical_m2", "area_cartesian_m2", "area_spherical_km2", "fraction", "none"]
+
 __all__ = [
     "coverage",
 ]
 
 
-def get_dtype(coverage_weight, geometries):
-    if coverage_weight.lower() == "fraction":
-        dtype = "float64"
-    elif coverage_weight.lower() == "none":
-        dtype = np.min_scalar_type(len(geometries))
+def get_dtype(coverage_weight: CoverageWeights, geometries):
+    if coverage_weight.lower() == "none":
+        dtype = np.float64
     else:
-        raise NotImplementedError
+        dtype = np.min_scalar_type(len(geometries))
     return dtype
 
 
@@ -37,7 +37,7 @@ def np_coverage(
     y: np.ndarray,
     *,
     geometries: gpd.GeoDataFrame,
-    coverage_weight: Literal["fraction", "none"] = "fraction",
+    coverage_weight: CoverageWeights = "fraction",
 ) -> np.ndarray[Any, Any]:
     """
     Parameters
@@ -87,7 +87,7 @@ def np_coverage(
 
 
 def coverage_np_dask_wrapper(
-    x: np.ndarray, y: np.ndarray, geom_array: np.ndarray, coverage_weight, crs
+    x: np.ndarray, y: np.ndarray, geom_array: np.ndarray, coverage_weight: CoverageWeights, crs
 ) -> np.ndarray:
     return np_coverage(
         x=x,
@@ -102,7 +102,7 @@ def dask_coverage(
     y: dask.array.Array,
     *,
     geom_array: dask.array.Array,
-    coverage_weight: Literal["fraction", "none"] = "fraction",
+    coverage_weight: CoverageWeights = "fraction",
     crs: Any,
 ) -> dask.array.Array:
     import dask.array
@@ -131,7 +131,7 @@ def coverage(
     *,
     xdim="x",
     ydim="y",
-    coverage_weight="fraction",
+    coverage_weight: CoverageWeights = "fraction",
 ) -> xr.DataArray:
     """
     Returns "coverage" fractions for each pixel for each geometry calculated using exactextract.
@@ -181,6 +181,12 @@ def coverage(
         else:
             geom_array = geom_dask_array
 
+    attrs = {}
+    if "_m2" in coverage_weight:
+        attrs["units"] = "m2"
+    elif "_km2" in coverage_weight:
+        attrs["units"] = "km2"
+
     coverage = xr.DataArray(
         dims=("geometry", ydim, xdim),
         data=out,
@@ -193,5 +199,6 @@ def coverage(
             },
             indexes={xdim: obj.xindexes[xdim], ydim: obj.xindexes[ydim]},
         ),
+        attrs=attrs,
     )
     return coverage
