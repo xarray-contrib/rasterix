@@ -40,7 +40,7 @@ rasterize = [
     "rasterio",
     "rioxarray",
 ]
-exactextract = ["exactextract"]
+exactextract = ["exactextract", "sparse"]
 test = [
   "geodatasets",
   "dask-geopandas",

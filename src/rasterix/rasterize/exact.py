@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import geopandas as gpd
 import numpy as np
+import sparse
 import xarray as xr
 from exactextract import exact_extract
 from exactextract.raster import NumPyRasterSource
@@ -16,6 +17,9 @@ if TYPE_CHECKING:
     import dask_geopandas
 
 MIN_CHUNK_SIZE = 2  # exactextract cannot handle arrays of size 1.
+GEOM_AXIS = 0
+X_AXIS = 1
+Y_AXIS = 2
 
 CoverageWeights = Literal["area_spherical_m2", "area_cartesian_m2", "area_spherical_km2", "fraction", "none"]
 
@@ -26,9 +30,9 @@ __all__ = [
 
 def get_dtype(coverage_weight: CoverageWeights, geometries):
     if coverage_weight.lower() == "none":
-        dtype = np.float64
-    else:
         dtype = np.min_scalar_type(len(geometries))
+    else:
+        dtype = np.float64
     return dtype
 
 
@@ -48,6 +52,9 @@ def np_coverage(
     assert y.ndim == 1
 
     dtype = get_dtype(coverage_weight, geometries)
+
+    if len(geometries.columns) > 1:
+        raise ValueError("Require a single geometries column or a GeoSeries.")
 
     xsize = x.size
     ysize = y.size
@@ -76,23 +83,40 @@ def np_coverage(
         output="pandas",
         # max_cells_in_memory=2*x.size * y.size
     )
-    out = np.zeros((len(geometries), *shape), dtype=dtype)
-    # TODO: vectorized assignment?
+
+    lens = np.vectorize(len)(result.cell_id.values)
+    nnz = np.sum(lens)
+    geom_idxs = np.empty((nnz,), dtype=np.int64)
+    xy_idxs = np.empty((nnz,), dtype=np.int64)
+    data = np.empty((nnz,), dtype=dtype)
+
+    # TODO: threadpool this?
+    # TODO: GCXS this directly
+    off = 0
     for i in range(len(geometries)):
-        res = result.loc[i]
-        # indices = np.unravel_index(res.cell_id, shape=shape)
-        # out[(i, *indices)] = offset + i + 1 # 0 is the fill value
-        out[i, ...].flat[res.cell_id] = res.coverage
-    return out
+        cell_id = result.cell_id.values[i]
+        if cell_id.size > 0:
+            geom_idxs[off : off + cell_id.size] = i
+            xy_idxs[off : off + cell_id.size] = cell_id
+            data[off : off + cell_id.size] = result.coverage.values[i]
+            off += cell_id.size
+
+    return sparse.COO(
+        (geom_idxs, *np.unravel_index(xy_idxs, shape=shape)),
+        data=data,
+        sorted=True,
+        fill_value=0,
+        shape=(len(geometries), *shape),
+    )
 
 
 def coverage_np_dask_wrapper(
-    x: np.ndarray, y: np.ndarray, geom_array: np.ndarray, coverage_weight: CoverageWeights, crs
+    geom_array: np.ndarray, x: np.ndarray, y: np.ndarray, coverage_weight: CoverageWeights, crs
 ) -> np.ndarray:
     return np_coverage(
-        x=x,
-        y=y,
-        geometries=gpd.GeoDataFrame(geometry=geom_array, crs=crs),
+        x=x.squeeze(axis=(GEOM_AXIS, Y_AXIS)),
+        y=y.squeeze(axis=(GEOM_AXIS, X_AXIS)),
+        geometries=gpd.GeoDataFrame(geometry=geom_array.squeeze(axis=(X_AXIS, Y_AXIS)), crs=crs),
         coverage_weight=coverage_weight,
     )
 
@@ -110,18 +134,16 @@ def dask_coverage(
     if any(c == 1 for c in x.chunks) or any(c == 1 for c in y.chunks):
         raise ValueError("exactextract does not support a chunksize of 1. Please rechunk to avoid this")
 
-    return dask.array.blockwise(
+    return dask.array.map_blocks(
         coverage_np_dask_wrapper,
-        "gji",
-        x,
-        "i",
-        y,
-        "j",
-        geom_array,
-        "g",
+        geom_array[:, np.newaxis, np.newaxis],
+        x[np.newaxis, :, np.newaxis],
+        y[np.newaxis, np.newaxis, :],
         crs=crs,
         coverage_weight=coverage_weight,
-        dtype=get_dtype(coverage_weight, geom_array),
+        meta=sparse.COO(
+            [], data=np.array([], dtype=get_dtype(coverage_weight, geom_array)), shape=(0, 0, 0), fill_value=0
+        ),
     )
 
 
@@ -181,24 +203,29 @@ def coverage(
         else:
             geom_array = geom_dask_array
 
+    name = "coverage"
     attrs = {}
+    if "area" in coverage_weight:
+        name = "area"
     if "_m2" in coverage_weight:
+        attrs["long_name"] = coverage_weight.removesuffix("_m2")
         attrs["units"] = "m2"
     elif "_km2" in coverage_weight:
+        attrs["long_name"] = coverage_weight.removesuffix("_km2")
         attrs["units"] = "km2"
 
+    indexes = {dim: obj.xindexes.get(dim) for dim in (xdim, ydim) if obj.xindexes.get(dim) is not None}
     coverage = xr.DataArray(
         dims=("geometry", ydim, xdim),
         data=out,
         coords=xr.Coordinates(
             coords={
-                xdim: obj.coords[xdim],
-                ydim: obj.coords[ydim],
                 "spatial_ref": obj.spatial_ref,
                 "geometry": geom_array,
             },
-            indexes={xdim: obj.xindexes[xdim], ydim: obj.xindexes[ydim]},
+            indexes=indexes,
         ),
         attrs=attrs,
+        name=name,
     )
     return coverage
