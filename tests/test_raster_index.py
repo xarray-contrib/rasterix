@@ -7,8 +7,6 @@ import pytest
 from xarray.structure.merge import MergeError
 
 from rasterix import RasterIndex, assign_index
-# TODO: hook up xproj to remove need for import?
-import xproj
 
 def _open_test_raster():
     source = "/vsicurl/https://noaadata.apps.nsidc.org/NOAA/G02135/south/daily/geotiff/2024/01_Jan/S_20240101_concentration_v3.0.tif"

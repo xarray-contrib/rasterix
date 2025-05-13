@@ -18,6 +18,9 @@ from rasterix.rioxarray_compat import guess_dims
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
+import xproj
+import warnings
+
 
 def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None) -> T_Xarray:
     if x_dim is None or y_dim is None:
@@ -284,7 +287,7 @@ def _filter_dim_indexers(index: WrappedIndex, indexers: Mapping) -> Mapping:
     return {dim: indexers[dim] for dim in dims if dim in indexers}
 
 
-class RasterIndex(Index):
+class RasterIndex(Index, xproj.ProjIndexMixin):
     """Xarray index for raster coordinates.
 
     RasterIndex is itself a wrapper around one or more Xarray indexes associated
@@ -321,6 +324,21 @@ class RasterIndex(Index):
         assert axis_dependent ^ axis_independent
 
         self._wrapped_indexes = dict(indexes)
+
+        self._crs = None
+
+    def _proj_get_crs(self):
+        return self._crs
+
+    def _proj_set_crs(self, spatial_ref, crs):
+        # note: `spatial_ref` is not used here
+        print(f"set CRS of index {self!r} to crs={crs}!")
+
+        self._crs = crs
+        return self
+
+    def _repr_inline_(self, max_width=70):
+        return f"{type(self).__name__} (crs={self._crs})"
 
     @classmethod
     def from_transform(
@@ -385,6 +403,13 @@ class RasterIndex(Index):
             return None
 
     def sel(self, labels: dict[Any, Any], method=None, tolerance=None) -> IndexSelResult:
+
+        if self._crs is not None:
+            warnings.warn(
+                f"make sure that indexer labels have CRS {self._crs}!",
+                UserWarning,
+            )
+        
         results = []
 
         for coord_names, index in self._wrapped_indexes.items():
