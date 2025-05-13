@@ -31,6 +31,7 @@ dependencies = [
     "pandas>=2",
     "numpy>=2",
     "xarray>=2025",
+    "xproj",
 ]
 dynamic=["version"]
 [project.optional-dependencies]
@@ -42,13 +43,16 @@ rasterize = [
 ]
 exactextract = ["exactextract"]
 test = [
-  "geodatasets",
   "dask-geopandas",
+  "geodatasets",
+  "exactextract",
+  "ipykernel",
+  "ipython",
+  "netCDF4",
   "odc-geo",
   "rasterio",
   "rioxarray",
-  "exactextract",
-  "netCDF4"
+  "ruff",
 ]
 
 [tool.hatch]
@@ -82,8 +86,9 @@ run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --
 run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 run-pytest = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
-run-mypy = "mypy src"
 list-env = "pip list"
+install-kernel = "python -m ipykernel install --user --name=rasterix"
+lint = "ruff check"
 
 [tool.ruff.lint]
 # E402: module level import not at top of file

@@ -41,3 +41,15 @@ pip install rasterix
    hatch env run --env test.py3.13 run-pytest  # Run the tests without coverage reports
    hatch env run --env test.py3.13 run-coverage-html   # Run the tests with an html coverage report
    ```
+
+#### Using hatch
+
+Start a shell
+```
+hatch env run --env test.py3.13 ipython
+```
+
+Expose kernel for notebooks in JupyterLab
+```
+hatch env run --env test.py3.13 "python -m ipykernel install --user --name=rasterix"
+```
