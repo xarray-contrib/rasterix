@@ -49,4 +49,23 @@ def test_combine_nested():
         for transform in transforms
     ]
     datasets = list(map(assign_index, datasets))
-    xr.combine_nested(datasets, concat_dim="x")
+    # xr.combine_nested(datasets, concat_dim="x")
+    xr.concat(datasets, concat_dim="x")
+
+
+def test_concat_new_dim():
+    transforms = [
+        "-50.0 0.5 0.0 0.0 0.0 -0.25",
+        "-50.0 0.5 0.0 0.0 0.0 -0.25",
+    ]
+    crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
+
+    datasets = [
+        xr.Dataset(
+            {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
+            coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transform})},
+        )
+        for transform in transforms
+    ]
+    datasets = list(map(assign_index, datasets))
+    xr.concat(datasets, dim="time", join="exact")

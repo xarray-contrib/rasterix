@@ -34,6 +34,8 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
 
 
 def _assert_transforms_are_compatible(A1: Affine, A2: Affine) -> None:
+    # TODO: offsets could be multiples
+    #       offset should be compatible too
     assert A1.a == A2.a
     assert A1.b == A2.b
     assert A1.d == A2.d
