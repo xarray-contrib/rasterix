@@ -41,43 +41,6 @@ def _assert_transforms_are_compatible(A1: Affine, A2: Affine) -> None:
     assert A1.e == A2.e
 
 
-def compute_bounding_box_affine(
-    A1: Affine, shape1: tuple[int, int], A2: Affine, shape2: tuple[int, int], *, how: str
-):
-    _assert_transforms_are_compatible(A1, A2)
-
-    # Apply both affine transformations to the corners
-    transformed1 = np.stack([A1 * point for point in [(0, 0), shape1]])
-    transformed2 = np.stack([A2 * point for point in [(0, 0), shape2]])
-
-    # Concatenate transformed points
-    all_points = np.stack([transformed1, transformed2])
-
-    # Compute bounding box min/max
-    if how == "outer":
-        min_x, min_y = all_points.min(axis=(0, 1)).tolist()
-        max_x, max_y = all_points.max(axis=(0, 1)).tolist()
-
-        assert max_x > min_x
-        assert max_y > min_y
-
-        # FIXME: floating point error here
-        Nx = None if A1.a == 0 else int(np.abs((max_x - min_x) / A1.a))
-        Ny = None if A1.e == 0 else int(np.abs((max_y - min_y) / A1.e))
-    else:
-        raise NotImplementedError
-
-    Anew = Affine(
-        A1.a,
-        A1.b,
-        min_x if A1.a > 0 else max_x,
-        A1.d,
-        A1.e,
-        min_y if A1.e > 0 else max_y,  # TODO: handle orientation here
-    )
-    return Anew, Nx, Ny
-
-
 class AffineTransform(CoordinateTransform):
     """Affine 2D transform wrapper."""
 
