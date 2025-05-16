@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import textwrap
 from collections.abc import Hashable, Iterable, Mapping, Sequence
 from typing import Any, Self, TypeVar
@@ -14,7 +15,7 @@ from xarray.core.coordinate_transform import CoordinateTransform
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
 
-from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, snap_grid
+from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, maybe_int, snap_grid
 from rasterix.rioxarray_compat import guess_dims
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
@@ -537,14 +538,10 @@ class RasterIndex(Index):
 
 
 def get_indexer(off, our_off, start, stop, spacing, tol, size) -> np.ndarray:
-    from math import ceil
+    istart = math.ceil(maybe_int((start - off) / spacing, tol))
 
-    from odc.geo.math import maybe_int
-
-    istart = ceil(maybe_int((start - off) / spacing, tol))
-
-    ours_istart = ceil(maybe_int((start - our_off) / spacing, tol))
-    ours_istop = ceil(maybe_int((stop - our_off) / spacing, tol))
+    ours_istart = math.ceil(maybe_int((start - our_off) / spacing, tol))
+    ours_istop = math.ceil(maybe_int((stop - our_off) / spacing, tol))
 
     idxr = np.concatenate(
         [
