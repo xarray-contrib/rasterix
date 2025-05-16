@@ -7,8 +7,6 @@ from typing import Any, Self, TypeVar
 import numpy as np
 import pandas as pd
 from affine import Affine
-from odc.geo import BoundingBox
-from odc.geo.geom import bbox_intersection, bbox_union
 from xarray import Coordinates, DataArray, Dataset, Index, Variable
 from xarray.core.coordinate_transform import CoordinateTransform
 
@@ -16,6 +14,7 @@ from xarray.core.coordinate_transform import CoordinateTransform
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
 
+from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union
 from rasterix.rioxarray_compat import guess_dims
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
@@ -466,7 +465,6 @@ class RasterIndex(Index):
         return BoundingBox.from_transform(
             shape=tuple(self._shape[k] for k in ("y", "x")),
             transform=self.transform() * Affine.translation(-0.5, -0.5),
-            crs=None,
         )
 
     @classmethod
