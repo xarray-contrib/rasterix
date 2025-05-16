@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 import textwrap
-from collections.abc import Hashable, Mapping
-from typing import Any, TypeVar
-from collections.abc import Hashable, Mapping
 from collections.abc import Hashable, Iterable, Mapping, Sequence
-from typing import Any, Self
+from typing import Any, Self, TypeVar
 
 import numpy as np
 import pandas as pd
 from affine import Affine
-from xarray import Coordinates, DataArray, Dataset, Index, Variable
-from xarray import DataArray, Index, Variable
 from odc.geo import BoundingBox
 from odc.geo.geom import bbox_intersection, bbox_union
-from xarray import DataArray, Index, Variable
+from xarray import Coordinates, DataArray, Dataset, Index, Variable
 from xarray.core.coordinate_transform import CoordinateTransform
 
 # TODO: import from public API once it is available
@@ -500,7 +495,7 @@ class RasterIndex(Index):
     def bbox(self) -> BoundingBox:
         return BoundingBox.from_transform(
             shape=tuple(self._shape[k] for k in ("y", "x")),
-            transform=self.combined_affine_transform() * Affine.translation(-0.5, -0.5),
+            transform=self.transform() * Affine.translation(-0.5, -0.5),
             crs=None,
         )
 
@@ -515,7 +510,7 @@ class RasterIndex(Index):
             return next(iter(indexes))
         raise NotImplementedError
 
-    def join(self, other, how) -> "RasterIndex":
+    def join(self, other, how) -> RasterIndex:
         if not isinstance(other, RasterIndex):
             raise ValueError(
                 f"Alignment is only supported between RasterIndexes. Received RasterIndex and {type(other)!r} instead"
@@ -538,8 +533,10 @@ class RasterIndex(Index):
             print(new_bbox, ours, theirs)
         elif how == "inner":
             new_bbox = bbox_intersection([ours, theirs])
+        else:
+            raise NotImplementedError
 
-        affine = self.combined_affine_transform()
+        affine = self.transform()
         new_affine, Nx, Ny = bbox_to_affine(new_bbox, rx=affine.a, ry=affine.e)
 
         # TODO: set xdim, ydim explicitly
@@ -548,7 +545,7 @@ class RasterIndex(Index):
         return new_index
 
     def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
-        affine = self.combined_affine_transform()
+        affine = self.transform()
         ours, theirs = as_compatible_bboxes(self, other)
         inter = bbox_intersection([ours, theirs])
         dx = affine.a
@@ -609,8 +606,8 @@ def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
 
 
 def as_compatible_bboxes(r1: RasterIndex, r2: RasterIndex) -> tuple[BoundingBox, BoundingBox]:
-    r1_transform = r1.combined_affine_transform()
-    r2_transform = r2.combined_affine_transform()
+    r1_transform = r1.transform()
+    r2_transform = r2.transform()
     _assert_transforms_are_compatible(r1_transform, r2_transform)
 
     return r1.bbox, r2.bbox
