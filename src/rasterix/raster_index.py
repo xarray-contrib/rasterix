@@ -85,7 +85,9 @@ class AffineTransform(CoordinateTransform):
 
         return results
 
-    def equals(self, other):
+    def equals(self, other, *, exclude):
+        if exclude is not None:
+            raise NotImplementedError
         if not isinstance(other, AffineTransform):
             return False
         return self.affine == other.affine and self.dim_size == other.dim_size
@@ -138,9 +140,11 @@ class AxisAffineTransform(CoordinateTransform):
 
         return {self.dim: positions}
 
-    def equals(self, other):
+    def equals(self, other, *, exclude):
         if not isinstance(other, AxisAffineTransform):
             return False
+        if exclude is not None:
+            raise NotImplementedError
 
         # only compare the affine parameters of the relevant axis
         if self.is_xaxis:
@@ -413,7 +417,9 @@ class RasterIndex(Index):
 
         return merge_sel_results(results)
 
-    def equals(self, other: Index) -> bool:
+    def equals(self, other: Index, *, exclude=None) -> bool:
+        if exclude is None:
+            exclude = {}
         if not isinstance(other, RasterIndex):
             return False
         if set(self._wrapped_indexes) != set(other._wrapped_indexes):
@@ -422,6 +428,7 @@ class RasterIndex(Index):
         return all(
             index.equals(other._wrapped_indexes[k])  # type: ignore[arg-type]
             for k, index in self._wrapped_indexes.items()
+            if k not in exclude
         )
 
     def to_pandas_index(self) -> pd.Index:
@@ -473,7 +480,7 @@ class RasterIndex(Index):
             return next(iter(indexes))
         raise NotImplementedError
 
-    def join(self, other, how) -> RasterIndex:
+    def join(self, other: RasterIndex, how) -> RasterIndex:
         if not isinstance(other, RasterIndex):
             raise ValueError(
                 f"Alignment is only supported between RasterIndexes. Received RasterIndex and {type(other)!r} instead"
@@ -526,9 +533,6 @@ class RasterIndex(Index):
         indexers["y"] = get_indexer(
             theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape["y"]
         )
-        import ipdb
-
-        ipdb.set_trace()
         return indexers
 
 

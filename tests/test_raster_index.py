@@ -1,4 +1,5 @@
 import numpy as np
+import pyproj
 import rioxarray  # noqa
 import xarray as xr
 from affine import Affine
@@ -31,3 +32,21 @@ def test_sel_slice():
 
     assert actual_transform == actual.rio.transform()
     assert actual_transform == (transform * Affine.translation(0, 3))
+
+
+def test_combine_nested():
+    transforms = [
+        "-50.0 0.5 0.0 0.0 0.0 -0.25",
+        "-40.0 0.5 0.0 0.0 0.0 -0.25",
+    ]
+    crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
+
+    datasets = [
+        xr.Dataset(
+            {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
+            coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transform})},
+        )
+        for transform in transforms
+    ]
+    datasets = list(map(assign_index, datasets))
+    xr.combine_nested(datasets, concat_dim="x")
