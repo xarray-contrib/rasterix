@@ -6,6 +6,95 @@ from typing import Any
 from affine import Affine
 
 
+def _snap_edge_pos(x0: float, x1: float, res: float, tol: float) -> tuple[float, int]:
+    assert res > 0
+    assert x1 >= x0
+    _x0 = math.floor(maybe_int(x0 / res, tol))
+    _x1 = math.ceil(maybe_int(x1 / res, tol))
+    nx = max(1, _x1 - _x0)
+    return _x0 * res, nx
+
+
+def _snap_edge(x0: float, x1: float, res: float, tol: float) -> tuple[float, int]:
+    assert x1 >= x0
+    if res > 0:
+        return _snap_edge_pos(x0, x1, res, tol)
+    _tx, nx = _snap_edge_pos(x0, x1, -res, tol)
+    tx = _tx + nx * (-res)
+    return tx, nx
+
+
+def snap_grid(
+    x0: float, x1: float, res: float, off_pix: float | None = 0, tol: float = 1e-6
+) -> tuple[float, int]:
+    """
+    Compute grid snapping for single axis.
+
+    :param x0: In point ``x0 <= x1``
+    :param x1: Out point ``x0 <= x1``
+    :param res: Pixel size and direction (can be negative)
+    :param off_pix:
+       Pixel fraction to align to ``x=0``.
+       0 - edge aligned
+       0.5 - center aligned
+       None - don't snap
+
+    :return: ``tx, nx`` that defines 1-d grid, such that ``x0`` and ``x1`` are within edge pixels.
+    """
+    assert (off_pix is None) or (0 <= off_pix < 1)
+    if off_pix is None:
+        if res > 0:
+            nx = math.ceil(maybe_int((x1 - x0) / res, tol))
+            return x0, max(1, nx)
+        nx = math.ceil(maybe_int((x1 - x0) / (-res), tol))
+        return x1, max(nx, 1)
+
+    off = off_pix * abs(res)
+    _tx, nx = _snap_edge(x0 - off, x1 - off, res, tol)
+    return _tx + off, nx
+
+
+def split_float(x: float) -> tuple[float, float]:
+    """
+    Split float number into whole and fractional parts.
+
+    Adding the two numbers back together should result in the original value.
+    Fractional part is always in the ``(-0.5, +0.5)`` interval, and whole part
+    is equivalent to ``round(x)``.
+
+    :param x: floating point number
+    :return: ``whole, fraction``
+    """
+    if not math.isfinite(x):
+        return (x, 0)
+
+    x_part = math.fmod(x, 1.0)
+    x_whole = x - x_part
+    if x_part > 0.5:
+        x_part -= 1
+        x_whole += 1
+    elif x_part < -0.5:
+        x_part += 1
+        x_whole -= 1
+    return (x_whole, x_part)
+
+
+def maybe_int(x: float, tol: float) -> int | float:
+    """
+    Turn almost ints to actual ints.
+
+    pass through other values unmodified.
+    """
+    if not math.isfinite(x):
+        return x
+
+    x_whole, x_part = split_float(x)
+
+    if abs(x_part) < tol:  # almost int
+        return int(x_whole)
+    return x
+
+
 class BoundingBox(Sequence[float]):
     """Bounding box, defining extent in cartesian coordinates."""
 

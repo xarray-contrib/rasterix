@@ -14,7 +14,7 @@ from xarray.core.coordinate_transform import CoordinateTransform
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
 
-from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union
+from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, snap_grid
 from rasterix.rioxarray_compat import guess_dims
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
@@ -559,8 +559,6 @@ def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
     # geobox is allowed to be smaller than supplied bounding box by that amount.
     # FIXME: translate user-provided `tolerance` to `tol`
     tol: float = 0.01
-
-    from odc.geo.math import snap_grid
 
     offx, nx = snap_grid(bbox.left, bbox.right, rx, 0, tol=tol)
     offy, ny = snap_grid(bbox.bottom, bbox.top, ry, 0, tol=tol)
