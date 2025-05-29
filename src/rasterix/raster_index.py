@@ -454,6 +454,9 @@ class RasterIndex(Index):
 
     def transform(self) -> Affine:
         """Returns Affine transform for top-left corners."""
+        return self.center_transform() * Affine.translation(-0.5, -0.5)
+
+    def center_transform(self) -> Affine:
         if len(self._wrapped_indexes) > 1:
             x = self._wrapped_indexes["x"].axis_transform.affine
             y = self._wrapped_indexes["y"].axis_transform.affine
@@ -461,13 +464,13 @@ class RasterIndex(Index):
         else:
             index = next(iter(self._wrapped_indexes.values()))
             aff = index.affine
-        return aff * Affine.translation(-0.5, -0.5)
+        return aff
 
     @property
     def bbox(self) -> BoundingBox:
         return BoundingBox.from_transform(
             shape=tuple(self._shape[k] for k in ("y", "x")),
-            transform=self.transform() * Affine.translation(-0.5, -0.5),
+            transform=self.transform(),
         )
 
     @classmethod
@@ -493,15 +496,12 @@ class RasterIndex(Index):
                 "Alignment is only supported between RasterIndexes, when both contain compatible transforms."
             )
 
-        # move affines back to top-left corner
-        trans = Affine.translation(-0.5, -0.5)
-        ours = self.transform() * trans
-        theirs = other.transform() * trans
+        ours = self.transform()
+        theirs = other.transform()
         ours, theirs = as_compatible_bboxes(self, other)
 
         if how == "outer":
             new_bbox = bbox_union([ours, theirs])
-            print(new_bbox, ours, theirs)
         elif how == "inner":
             new_bbox = bbox_intersection([ours, theirs])
         else:
