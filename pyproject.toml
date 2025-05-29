@@ -14,14 +14,13 @@ name = "rasterix"
 description = "Raster extensions for Xarray"
 license = "Apache-2.0"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["xarray"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -75,7 +74,7 @@ dependencies = [
 features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.13"]
+python = ["3.11", "3.13"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
