@@ -3,6 +3,7 @@ import pyproj
 import rioxarray  # noqa
 import xarray as xr
 from affine import Affine
+from xarray.testing import assert_identical
 
 from rasterix import RasterIndex, assign_index
 
@@ -36,8 +37,8 @@ def test_sel_slice():
 
 def test_combine_nested():
     transforms = [
-        "-50.0 0.5 0.0 0.0 0.0 -0.25",
-        "-40.0 0.5 0.0 0.0 0.0 -0.25",
+        "-50.0 5 0.0 0.0 0.0 -0.25",
+        "-40.0 5 0.0 0.0 0.0 -0.25",
     ]
     crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
 
@@ -49,8 +50,14 @@ def test_combine_nested():
         for transform in transforms
     ]
     datasets = list(map(assign_index, datasets))
-    # xr.combine_nested(datasets, concat_dim="x")
-    xr.concat(datasets, concat_dim="x")
+
+    expected = xr.Dataset(
+        {"foo": (("y", "x"), np.ones((4, 2 * len(datasets))), {"grid_mapping": "spatial_ref"})},
+        coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transforms[0]})},
+    ).pipe(assign_index)
+
+    assert_identical(xr.combine_nested(datasets, concat_dim="x", combine_attrs="override"), expected)
+    assert_identical(xr.concat(datasets, dim="x"), expected)
 
 
 def test_concat_new_dim():

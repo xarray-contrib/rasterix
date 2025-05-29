@@ -34,13 +34,15 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
     return obj.assign_coords(coords)
 
 
-def _assert_transforms_are_compatible(A1: Affine, A2: Affine) -> None:
+def _assert_transforms_are_compatible(*affines) -> None:
     # TODO: offsets could be multiples
     #       offset should be compatible too
-    assert A1.a == A2.a
-    assert A1.b == A2.b
-    assert A1.d == A2.d
-    assert A1.e == A2.e
+    A1 = affines[0]
+    for A2 in affines[1:]:
+        assert A1.a == A2.a
+        assert A1.b == A2.b
+        assert A1.d == A2.d
+        assert A1.e == A2.e
 
 
 class AffineTransform(CoordinateTransform):
@@ -482,7 +484,22 @@ class RasterIndex(Index):
     ) -> Self:
         if len(indexes) == 1:
             return next(iter(indexes))
-        raise NotImplementedError
+
+        if positions is not None:
+            raise NotImplementedError
+
+        # Note: I am assuming that xarray has calling `align(..., exclude="x" [or 'y'])` already
+        # and checked for equality along "y" [or 'x']
+        new_bbox = bbox_union(as_compatible_bboxes(*indexes))
+        return indexes[0]._new_with_bbox(new_bbox)
+
+    def _new_with_bbox(self, bbox: BoundingBox) -> Self:
+        affine = self.transform()
+        new_affine, Nx, Ny = bbox_to_affine(bbox, rx=affine.a, ry=affine.e)
+        # TODO: set xdim, ydim explicitly
+        new_index = self.from_transform(new_affine, width=Nx, height=Ny)
+        assert new_index.bbox == bbox
+        return new_index
 
     def join(self, other: RasterIndex, how) -> RasterIndex:
         if not isinstance(other, RasterIndex):
@@ -496,10 +513,7 @@ class RasterIndex(Index):
                 "Alignment is only supported between RasterIndexes, when both contain compatible transforms."
             )
 
-        ours = self.transform()
-        theirs = other.transform()
         ours, theirs = as_compatible_bboxes(self, other)
-
         if how == "outer":
             new_bbox = bbox_union([ours, theirs])
         elif how == "inner":
@@ -507,13 +521,7 @@ class RasterIndex(Index):
         else:
             raise NotImplementedError
 
-        affine = self.transform()
-        new_affine, Nx, Ny = bbox_to_affine(new_bbox, rx=affine.a, ry=affine.e)
-
-        # TODO: set xdim, ydim explicitly
-        new_index = self.from_transform(new_affine, width=Nx, height=Ny)
-        assert new_index.bbox == new_bbox
-        return new_index
+        return self._new_with_bbox(new_bbox)
 
     def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
         affine = self.transform()
@@ -567,9 +575,7 @@ def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
     return affine, nx, ny
 
 
-def as_compatible_bboxes(r1: RasterIndex, r2: RasterIndex) -> tuple[BoundingBox, BoundingBox]:
-    r1_transform = r1.transform()
-    r2_transform = r2.transform()
-    _assert_transforms_are_compatible(r1_transform, r2_transform)
-
-    return r1.bbox, r2.bbox
+def as_compatible_bboxes(*indexes: RasterIndex) -> tuple[BoundingBox, ...]:
+    transforms = tuple(i.transform() for i in indexes)
+    _assert_transforms_are_compatible(*transforms)
+    return tuple(i.bbox for i in indexes)
