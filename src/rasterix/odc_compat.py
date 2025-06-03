@@ -152,63 +152,10 @@ class BoundingBox(Sequence[float]):
     def __or__(self, other: "BoundingBox") -> "BoundingBox":
         return bbox_union([self, other])
 
-    def buffered(self, xbuff: float, ybuff: float | None = None) -> "BoundingBox":
-        """
-        Return a new BoundingBox, buffered in the x and y dimensions.
-
-        :param xbuff: X dimension buffering amount
-        :param ybuff: Y dimension buffering amount
-        :return: new BoundingBox
-        """
-        if ybuff is None:
-            ybuff = xbuff
-
-        return BoundingBox(
-            left=self.left - xbuff,
-            bottom=self.bottom - ybuff,
-            right=self.right + xbuff,
-            top=self.top + ybuff,
-        )
-
-    @property
-    def span_x(self) -> float:
-        """Span of the bounding box along x axis."""
-        return self.right - self.left
-
-    @property
-    def span_y(self) -> float:
-        """Span of the bounding box along y axis."""
-        return self.top - self.bottom
-
-    @property
-    def aspect(self) -> float:
-        """Aspect ratio."""
-        return self.span_x / self.span_y
-
-    @property
-    def width(self) -> int:
-        """``int(span_x)``"""
-        return int(self.right - self.left)
-
-    @property
-    def height(self) -> int:
-        """``int(span_y)``"""
-        return int(self.top - self.bottom)
-
     @property
     def shape(self) -> tuple[int, int]:
         """``(int(span_y), int(span_x))``."""
         return (self.height, self.width)
-
-    @property
-    def range_x(self) -> tuple[float, float]:
-        """``left, right``"""
-        return (self.left, self.right)
-
-    @property
-    def range_y(self) -> tuple[float, float]:
-        """``bottom, top``"""
-        return (self.bottom, self.top)
 
     @property
     def points(self) -> list[tuple[float, float]]:
@@ -227,16 +174,6 @@ class BoundingBox(Sequence[float]):
         xx = [x for x, _ in pts]
         yy = [y for _, y in pts]
         return BoundingBox(min(xx), min(yy), max(xx), max(yy))
-
-    def map_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        """
-        Convert to bounds in folium/ipyleaflet style.
-
-        Returns SW, and NE corners in lat/lon order.
-        ``((lat_w, lon_s), (lat_e, lon_n))``.
-        """
-        x0, y0, x1, y1 = self._box
-        return (y0, x0), (y1, x1)
 
     @staticmethod
     def from_xy(x: tuple[float, float], y: tuple[float, float]) -> "BoundingBox":

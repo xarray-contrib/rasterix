@@ -515,9 +515,9 @@ class RasterIndex(Index):
 
         ours, theirs = as_compatible_bboxes(self, other)
         if how == "outer":
-            new_bbox = bbox_union([ours, theirs])
+            new_bbox = ours | theirs
         elif how == "inner":
-            new_bbox = bbox_intersection([ours, theirs])
+            new_bbox = ours & theirs
         else:
             raise NotImplementedError
 
