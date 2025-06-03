@@ -43,11 +43,13 @@ rasterize = [
 exactextract = ["exactextract", "sparse"]
 test = [
   "geodatasets",
+  "pooch",
   "dask-geopandas",
   "odc-geo",
   "rasterio",
   "rioxarray",
   "exactextract",
+  "sparse",
   "netCDF4"
 ]
 

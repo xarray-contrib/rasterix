@@ -21,40 +21,18 @@ GEOM_AXIS = 0
 X_AXIS = 1
 Y_AXIS = 2
 
-CoverageWeights = Literal["area_spherical_m2", "area_cartesian_m2", "area_spherical_km2", "fraction", "none"]
+DEFAULT_STRATEGY = "feature-sequential"
+Strategy = Literal["feature-sequential", "raster-sequential", "raster-parallel"]
+CoverageWeights = Literal["area_spherical_m2", "area_cartesian", "area_spherical_km2", "fraction", "none"]
 
 __all__ = [
     "coverage",
 ]
 
 
-def get_dtype(coverage_weight: CoverageWeights, geometries):
-    if coverage_weight.lower() == "none":
-        dtype = np.min_scalar_type(len(geometries))
-    else:
-        dtype = np.float64
-    return dtype
-
-
-def np_coverage(
-    x: np.ndarray,
-    y: np.ndarray,
-    *,
-    geometries: gpd.GeoDataFrame,
-    coverage_weight: CoverageWeights = "fraction",
-) -> np.ndarray[Any, Any]:
-    """
-    Parameters
-    ----------
-
-    """
+def xy_to_raster_source(x: np.ndarray, y: np.ndarray, *, srs_wkt: str | None) -> NumPyRasterSource:
     assert x.ndim == 1
     assert y.ndim == 1
-
-    dtype = get_dtype(coverage_weight, geometries)
-
-    if len(geometries.columns) > 1:
-        raise ValueError("Require a single geometries column or a GeoSeries.")
 
     xsize = x.size
     ysize = y.size
@@ -74,8 +52,40 @@ def np_coverage(
         xmax=x.max() + dx1,
         ymin=y.min() - dy0,
         ymax=y.max() + dy1,
-        srs_wkt=geometries.crs.to_wkt(),
+        srs_wkt=srs_wkt,
     )
+
+    return raster
+
+
+def get_dtype(coverage_weight: CoverageWeights, geometries):
+    if coverage_weight.lower() == "none":
+        dtype = np.uint8
+    else:
+        dtype = np.float64
+    return dtype
+
+
+def np_coverage(
+    x: np.ndarray,
+    y: np.ndarray,
+    *,
+    geometries: gpd.GeoDataFrame,
+    strategy: Strategy = DEFAULT_STRATEGY,
+    coverage_weight: CoverageWeights = "fraction",
+) -> np.ndarray[Any, Any]:
+    """
+    Parameters
+    ----------
+
+    """
+    dtype = get_dtype(coverage_weight, geometries)
+
+    if len(geometries.columns) > 1:
+        raise ValueError("Require a single geometries column or a GeoSeries.")
+
+    shape = (y.size, x.size)
+    raster = xy_to_raster_source(x, y, srs_wkt=geometries.crs.to_wkt())
     result = exact_extract(
         rast=raster,
         vec=geometries,
@@ -86,6 +96,7 @@ def np_coverage(
 
     lens = np.vectorize(len)(result.cell_id.values)
     nnz = np.sum(lens)
+    print(nnz)
 
     # Notes on GCXS vs COO,  For N data points in 263 geoms by 4000 x by 4000 y
     # 1. GCXS cannot compress _all_ axes. This is relevant here.
@@ -131,6 +142,7 @@ def dask_coverage(
     *,
     geom_array: dask.array.Array,
     coverage_weight: CoverageWeights = "fraction",
+    strategy: Strategy = DEFAULT_STRATEGY,
     crs: Any,
 ) -> dask.array.Array:
     import dask.array
@@ -145,6 +157,7 @@ def dask_coverage(
         y[np.newaxis, np.newaxis, :],
         crs=crs,
         coverage_weight=coverage_weight,
+        strategy=strategy,
         meta=sparse.COO(
             [], data=np.array([], dtype=get_dtype(coverage_weight, geom_array)), shape=(0, 0, 0), fill_value=0
         ),
@@ -157,6 +170,7 @@ def coverage(
     *,
     xdim="x",
     ydim="y",
+    strategy: Strategy = "feature-sequential",
     coverage_weight: CoverageWeights = "fraction",
 ) -> xr.DataArray:
     """
@@ -189,6 +203,7 @@ def coverage(
             y=obj[ydim].data,
             geometries=geometries,
             coverage_weight=coverage_weight,
+            strategy=strategy,
         )
         geom_array = geometries.to_numpy().squeeze(axis=1)
     else:
@@ -201,6 +216,7 @@ def coverage(
             geom_array=geom_dask_array,
             crs=geometries.crs,
             coverage_weight=coverage_weight,
+            strategy=strategy,
         )
         if isinstance(geometries, gpd.GeoDataFrame):
             geom_array = geometries.to_numpy().squeeze(axis=1)
@@ -218,18 +234,20 @@ def coverage(
         attrs["long_name"] = coverage_weight.removesuffix("_km2")
         attrs["units"] = "km2"
 
-    indexes = {dim: obj.xindexes.get(dim) for dim in (xdim, ydim) if obj.xindexes.get(dim) is not None}
-    coverage = xr.DataArray(
-        dims=("geometry", ydim, xdim),
-        data=out,
-        coords=xr.Coordinates(
-            coords={
-                "spatial_ref": obj.spatial_ref,
-                "geometry": geom_array,
-            },
-            indexes=indexes,
-        ),
-        attrs=attrs,
-        name=name,
+    xy_coords = [
+        xr.Coordinates.from_xindex(obj.xindexes.get(dim))
+        for dim in (xdim, ydim)
+        if obj.xindexes.get(dim) is not None
+    ]
+    coords = xr.Coordinates(
+        coords={
+            "spatial_ref": obj.spatial_ref,
+            "geometry": geom_array,
+        }
     )
+    if xy_coords:
+        for c in xy_coords:
+            coords = coords.merge(c)
+        coords = coords.coords
+    coverage = xr.DataArray(dims=("geometry", ydim, xdim), data=out, coords=coords, attrs=attrs, name=name)
     return coverage
