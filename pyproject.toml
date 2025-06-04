@@ -28,6 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "affine",
+    "pyproj",
     "pandas>=2",
     "numpy>=2",
     "xarray>=2025",

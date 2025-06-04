@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import textwrap
 from collections.abc import Hashable, Mapping
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 import numpy as np
 import pandas as pd
 from affine import Affine
+from pyproj import CRS
 from xarray import Coordinates, DataArray, Dataset, Index, Variable
 from xarray.core.coordinate_transform import CoordinateTransform
 
@@ -30,6 +31,15 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
+
+
+def _format_crs(crs: CRS | None, max_width: int = 50) -> str:
+    if crs is not None:
+        srs = crs.to_string()
+    else:
+        srs = "None"
+
+    return srs if len(srs) <= max_width else " ".join([srs[:max_width], "..."])
 
 
 class AffineTransform(CoordinateTransform):
@@ -295,17 +305,22 @@ class RasterIndex(Index):
       encapsulates a single `CoordinateTransformIndex` object for both the x and
       y axis (2-dimensional) coordinates.
 
-    - The affine transformation is rectilinear ands has no rotation: this index
+    - The affine transformation is rectilinear and has no rotation: this index
       encapsulates one or two index objects for either the x or y axis or both
       (1-dimensional) coordinates. The index type is either a subclass of
       `CoordinateTransformIndex` that supports slicing or `PandasIndex` (e.g.,
       after data selection at arbitrary locations).
 
+    RasterIndex is CRS-aware, i.e., it has a ``crs`` property that is used for
+    checking equality or compatibility with other RasterIndex instances. CRS is
+    optional.
+
     """
 
     _wrapped_indexes: dict[WrappedIndexCoords, WrappedIndex]
+    _crs: CRS | None
 
-    def __init__(self, indexes: Mapping[WrappedIndexCoords, WrappedIndex]):
+    def __init__(self, indexes: Mapping[WrappedIndexCoords, WrappedIndex],  crs: CRS | Any | None = None):
         idx_keys = list(indexes)
         idx_vals = list(indexes.values())
 
@@ -322,9 +337,14 @@ class RasterIndex(Index):
 
         self._wrapped_indexes = dict(indexes)
 
+        if crs is not None:
+            crs = CRS.from_user_input(crs)
+
+        self._crs = crs
+
     @classmethod
     def from_transform(
-        cls, affine: Affine, width: int, height: int, x_dim: str = "x", y_dim: str = "y"
+        cls, affine: Affine, width: int, height: int, x_dim: str = "x", y_dim: str = "y", crs: CRS | Any | None = None
     ) -> RasterIndex:
         indexes: dict[WrappedIndexCoords, AxisAffineTransformIndex | CoordinateTransformIndex]
 
@@ -342,7 +362,7 @@ class RasterIndex(Index):
             xy_transform = AffineTransform(affine, width, height, x_dim=x_dim, y_dim=y_dim)
             indexes = {("x", "y"): CoordinateTransformIndex(xy_transform)}
 
-        return cls(indexes)
+        return cls(indexes, crs=crs)
 
     @classmethod
     def from_variables(
@@ -362,25 +382,40 @@ class RasterIndex(Index):
 
         return new_variables
 
+    @property
+    def crs(self) -> CRS | None:
+        """Returns the coordinate reference system (CRS) of the index as a
+        :class:`pyproj.crs.CRS` object, or ``None`` if CRS is undefined.
+        """
+        return self._crs
+
+    def _check_crs(self, other_crs: CRS | None, allow_none: bool = False) -> bool:
+        """Check if the index's projection is the same than the given one.
+        If allow_none is True, empty CRS is treated as the same.
+        """
+        if allow_none:
+            if self.crs is None or other_crs is None:
+                return True
+        if not self.crs == other_crs:
+            return False
+        return True
+
     def isel(self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]) -> RasterIndex | None:
         new_indexes: dict[WrappedIndexCoords, WrappedIndex] = {}
 
         for coord_names, index in self._wrapped_indexes.items():
             index_indexers = _filter_dim_indexers(index, indexers)
             if not index_indexers:
-                # no selection to perform: simply propagate the index
-                # TODO: uncomment when https://github.com/pydata/xarray/issues/10063 is fixed
-                # new_indexes[coord_names] = index
-                ...
+                new_indexes[coord_names] = index
             else:
                 new_index = index.isel(index_indexers)
                 if new_index is not None:
-                    new_indexes[coord_names] = new_index
+                    new_indexes[coord_names] = cast(WrappedIndex, new_index)
 
         if new_indexes:
             # TODO: if there's only a single PandasIndex can we just return it?
             # (maybe better to keep it wrapped if we plan to later make RasterIndex CRS-aware)
-            return RasterIndex(new_indexes)
+            return RasterIndex(new_indexes, crs=self.crs)
         else:
             return None
 
@@ -398,6 +433,8 @@ class RasterIndex(Index):
 
     def equals(self, other: Index) -> bool:
         if not isinstance(other, RasterIndex):
+            return False
+        if not self._check_crs(other.crs, allow_none=True):
             return False
         if set(self._wrapped_indexes) != set(other._wrapped_indexes):
             return False
@@ -418,13 +455,22 @@ class RasterIndex(Index):
 
         raise ValueError("Cannot convert RasterIndex to pandas.Index")
 
+    def _repr_inline_(self, max_width: int) -> str:
+        # TODO: remove when fixed in XArray
+        if max_width is None:
+            max_width = get_options()["display_width"]
+
+        srs = _format_crs(self.crs, max_width=max_width)
+        return f"{self.__class__.__name__} (crs={srs})"
+
     def __repr__(self):
+        srs = _format_crs(self.crs)
         items: list[str] = []
 
         for coord_names, index in self._wrapped_indexes.items():
             items += [repr(coord_names) + ":", textwrap.indent(repr(index), "    ")]
 
-        return "RasterIndex\n" + "\n".join(items)
+        return f"RasterIndex(crs={srs})\n" + "\n".join(items)
 
     def transform(self) -> Affine:
         """Returns Affine transform for top-left corners."""
