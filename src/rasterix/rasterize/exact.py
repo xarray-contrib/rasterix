@@ -227,7 +227,7 @@ def coverage(
     attrs = {}
     if "area" in coverage_weight:
         name = "area"
-    if "_m2" in coverage_weight:
+    if "_m2" in coverage_weight or coverage_weight == "area_cartesian":
         attrs["long_name"] = coverage_weight.removesuffix("_m2")
         attrs["units"] = "m2"
     elif "_km2" in coverage_weight:
