@@ -18,8 +18,8 @@ if TYPE_CHECKING:
 
 MIN_CHUNK_SIZE = 2  # exactextract cannot handle arrays of size 1.
 GEOM_AXIS = 0
-X_AXIS = 1
-Y_AXIS = 2
+Y_AXIS = 1
+X_AXIS = 2
 
 DEFAULT_STRATEGY = "feature-sequential"
 Strategy = Literal["feature-sequential", "raster-sequential", "raster-parallel"]
@@ -96,7 +96,6 @@ def np_coverage(
 
     lens = np.vectorize(len)(result.cell_id.values)
     nnz = np.sum(lens)
-    print(nnz)
 
     # Notes on GCXS vs COO,  For N data points in 263 geoms by 4000 x by 4000 y
     # 1. GCXS cannot compress _all_ axes. This is relevant here.
@@ -126,7 +125,12 @@ def np_coverage(
 
 
 def coverage_np_dask_wrapper(
-    geom_array: np.ndarray, x: np.ndarray, y: np.ndarray, coverage_weight: CoverageWeights, crs
+    geom_array: np.ndarray,
+    x: np.ndarray,
+    y: np.ndarray,
+    coverage_weight: CoverageWeights,
+    strategy: Strategy,
+    crs,
 ) -> np.ndarray:
     return np_coverage(
         x=x.squeeze(axis=(GEOM_AXIS, Y_AXIS)),
@@ -150,18 +154,20 @@ def dask_coverage(
     if any(c == 1 for c in x.chunks) or any(c == 1 for c in y.chunks):
         raise ValueError("exactextract does not support a chunksize of 1. Please rechunk to avoid this")
 
-    return dask.array.map_blocks(
+    out = dask.array.map_blocks(
         coverage_np_dask_wrapper,
         geom_array[:, np.newaxis, np.newaxis],
-        x[np.newaxis, :, np.newaxis],
-        y[np.newaxis, np.newaxis, :],
+        x[np.newaxis, np.newaxis, :],
+        y[np.newaxis, :, np.newaxis],
         crs=crs,
         coverage_weight=coverage_weight,
         strategy=strategy,
+        chunks=(*geom_array.chunks, *y.chunks, *x.chunks),
         meta=sparse.COO(
             [], data=np.array([], dtype=get_dtype(coverage_weight, geom_array)), shape=(0, 0, 0), fill_value=0
         ),
     )
+    return out
 
 
 def coverage(
@@ -207,12 +213,22 @@ def coverage(
         )
         geom_array = geometries.to_numpy().squeeze(axis=1)
     else:
-        from dask.array import from_array
+        from dask.array import Array, from_array
 
         geom_dask_array = geometries_as_dask_array(geometries)
+        if not isinstance(obj[xdim].data, Array):
+            dask_x = from_array(obj[xdim].data, chunks=obj.chunksizes.get(xdim, -1))
+        else:
+            dask_x = obj[xdim].data
+
+        if not isinstance(obj[ydim].data, Array):
+            dask_y = from_array(obj[ydim].data, chunks=obj.chunksizes.get(ydim, -1))
+        else:
+            dask_y = obj[ydim].data
+
         out = dask_coverage(
-            x=from_array(obj[xdim].data, chunks=obj.chunksizes.get(xdim, -1)),
-            y=from_array(obj[ydim].data, chunks=obj.chunksizes.get(ydim, -1)),
+            x=dask_x,
+            y=dask_y,
             geom_array=geom_dask_array,
             crs=geometries.crs,
             coverage_weight=coverage_weight,
@@ -243,7 +259,8 @@ def coverage(
         coords={
             "spatial_ref": obj.spatial_ref,
             "geometry": geom_array,
-        }
+        },
+        indexes={},
     )
     if xy_coords:
         for c in xy_coords:

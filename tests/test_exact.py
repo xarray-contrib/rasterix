@@ -1,5 +1,6 @@
 from typing import Any
 
+import dask_geopandas as dgpd
 import geodatasets
 import geopandas as gpd
 import numpy as np
@@ -14,7 +15,7 @@ from xarray.tests import raise_if_dask_computes
 from rasterix.rasterize.exact import CoverageWeights, coverage, xy_to_raster_source
 
 dataset = xr.tutorial.open_dataset("eraint_uvz").rename({"latitude": "y", "longitude": "x"})
-dataset = dataset.rio.write_crs("epsg:4326").isel(y=slice(200, None))
+dataset = dataset.rio.write_crs("epsg:4326")
 world = gpd.read_file(geodatasets.get_path("naturalearth land"))
 
 
@@ -56,25 +57,35 @@ def test_geodataframe_multiple_columns_error():
 
 
 @pytest.mark.parametrize("xslicer", [slice(None), slice(40, 90)])
-@pytest.mark.parametrize("yslicer", [slice(None)])
+@pytest.mark.parametrize("yslicer", [slice(None), slice(40, 90)])
 @pytest.mark.parametrize("indexed", [True, False])
-@pytest.mark.parametrize("chunked", [True, False])
+@pytest.mark.parametrize("chunks", [None, {"y": 119, "x": -1}])
+@pytest.mark.parametrize("geom_chunks", [None, 23])
 @pytest.mark.parametrize(
     "coverage_weight", ["area_spherical_m2", "area_cartesian", "area_spherical_km2", "fraction", "none"]
 )
 def test_coverage_weights(
-    coverage_weight: CoverageWeights, chunked: bool, indexed: bool, xslicer, yslicer
+    coverage_weight: CoverageWeights,
+    chunks,
+    geom_chunks: int | None,
+    indexed: bool,
+    xslicer: slice,
+    yslicer: slice,
 ) -> None:
     geometries = world.copy(deep=True)
     ds = dataset.copy(deep=True)
     if not indexed:
         ds = ds.drop_indexes(["x", "y"])
-    if chunked:
-        pass
 
     expected = np_exact_extract(
         x=ds.x.data, y=ds.y.data, geometries=geometries, coverage_weight=coverage_weight
     )[:, yslicer, xslicer]
+
+    if chunks:
+        ds = ds.chunk(chunks)
+
+    if geom_chunks:
+        geometries = dgpd.from_geopandas(geometries, chunksize=geom_chunks)
 
     ds = ds.isel(x=xslicer, y=yslicer)
     with raise_if_dask_computes():
@@ -87,8 +98,10 @@ def test_coverage_weights(
         assert ds.xindexes["x"].equals(actual.xindexes["x"])
         assert ds.xindexes["y"].equals(actual.xindexes["y"])
     assert expected.dtype == actual.data.dtype
-    npt.assert_equal(expected.todense(), actual.data.todense())
+
+    actual_sparse = actual.compute().data
+    npt.assert_equal(expected.todense(), actual_sparse.todense())
     # TODO: This doesn't work for area_spherical_*. A few 0 values sneak through
     if "area_spherical" not in coverage_weight:
-        assert expected.nnz == actual.data.nnz
+        assert expected.nnz == actual_sparse.nnz
     xrt.assert_equal(dataset["spatial_ref"], actual["spatial_ref"])
