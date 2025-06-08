@@ -151,7 +151,7 @@ def dask_coverage(
 ) -> dask.array.Array:
     import dask.array
 
-    if any(c == 1 for c in x.chunks) or any(c == 1 for c in y.chunks):
+    if any(c == 1 for c in x.chunks[0]) or any(c == 1 for c in y.chunks[0]):
         raise ValueError("exactextract does not support a chunksize of 1. Please rechunk to avoid this")
 
     out = dask.array.map_blocks(
