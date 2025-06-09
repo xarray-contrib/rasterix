@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from typing import TYPE_CHECKING
 
 import geopandas as gpd
@@ -33,7 +34,13 @@ def geometries_as_dask_array(
     from dask.array import from_array
 
     if isinstance(geometries, gpd.GeoDataFrame):
-        return from_array(geometries.geometry.to_numpy(), chunks=-1)
+        return from_array(
+            geometries.geometry.to_numpy(),
+            chunks=-1,
+            # This is what dask-geopandas does
+            # It avoids pickling geometries, which can be expensive (calls to_wkb)
+            name=uuid.uuid4().hex,
+        )
     else:
         divisions = geometries.divisions
         if any(d is None for d in divisions):
