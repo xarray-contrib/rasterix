@@ -28,9 +28,9 @@ classifiers = [
 ]
 dependencies = [
     "affine",
-    "pyproj",
     "pandas>=2",
     "numpy>=2",
+    "xproj>=0.2.0",
     "xarray>=2025",
 ]
 dynamic=["version"]

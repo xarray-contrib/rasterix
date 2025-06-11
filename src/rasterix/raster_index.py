@@ -6,6 +6,7 @@ from typing import Any, TypeVar, cast
 
 import numpy as np
 import pandas as pd
+import xproj
 from affine import Affine
 from pyproj import CRS
 from xarray import Coordinates, DataArray, Dataset, Index, Variable, get_options
@@ -14,6 +15,7 @@ from xarray.core.coordinate_transform import CoordinateTransform
 # TODO: import from public API once it is available
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
+from xproj.typing import CRSAwareIndex
 
 from rasterix.rioxarray_compat import guess_dims
 
@@ -31,15 +33,6 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
-
-
-def _format_crs(crs: CRS | None, max_width: int = 50) -> str:
-    if crs is not None:
-        srs = crs.to_string()
-    else:
-        srs = "None"
-
-    return srs if len(srs) <= max_width else " ".join([srs[:max_width], "..."])
 
 
 class AffineTransform(CoordinateTransform):
@@ -302,7 +295,7 @@ def _filter_dim_indexers(index: WrappedIndex, indexers: Mapping) -> Mapping:
     return {dim: indexers[dim] for dim in dims if dim in indexers}
 
 
-class RasterIndex(Index):
+class RasterIndex(Index, xproj.ProjIndexMixin):
     """Xarray index for raster coordinates.
 
     RasterIndex is itself a wrapper around one or more Xarray indexes associated
@@ -403,16 +396,11 @@ class RasterIndex(Index):
         """
         return self._crs
 
-    def _check_crs(self, other_crs: CRS | None, allow_none: bool = False) -> bool:
-        """Check if the index's projection is the same than the given one.
-        If allow_none is True, empty CRS is treated as the same.
-        """
-        if allow_none:
-            if self.crs is None or other_crs is None:
-                return True
-        if not self.crs == other_crs:
-            return False
-        return True
+    def _proj_set_crs(self: RasterIndex, spatial_ref: Hashable, crs: CRS) -> RasterIndex:
+        # Returns a raster index shallow copy with a replaced CRS
+        # (XProj integration via xproj.ProjIndexMixin)
+        # Note: XProj already handles the case of overriding any existing CRS
+        return RasterIndex(self._wrapped_indexes, crs=crs)
 
     def isel(self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]) -> RasterIndex | None:
         new_indexes: dict[WrappedIndexCoords, WrappedIndex] = {}
@@ -448,7 +436,7 @@ class RasterIndex(Index):
     def equals(self, other: Index) -> bool:
         if not isinstance(other, RasterIndex):
             return False
-        if not self._check_crs(other.crs, allow_none=True):
+        if not self._proj_crs_equals(cast(CRSAwareIndex, other), allow_none=True):
             return False
         if set(self._wrapped_indexes) != set(other._wrapped_indexes):
             return False
@@ -470,15 +458,15 @@ class RasterIndex(Index):
         raise ValueError("Cannot convert RasterIndex to pandas.Index")
 
     def _repr_inline_(self, max_width: int) -> str:
-        # TODO: remove when fixed in XArray
+        # TODO: remove when fixed in Xarray (https://github.com/pydata/xarray/pull/10415)
         if max_width is None:
             max_width = get_options()["display_width"]
 
-        srs = _format_crs(self.crs, max_width=max_width)
+        srs = xproj.format_crs(self.crs, max_width=max_width)
         return f"{self.__class__.__name__} (crs={srs})"
 
     def __repr__(self) -> str:
-        srs = _format_crs(self.crs)
+        srs = xproj.format_crs(self.crs)
         items: list[str] = []
 
         for coord_names, index in self._wrapped_indexes.items():
