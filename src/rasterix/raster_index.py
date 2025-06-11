@@ -79,7 +79,7 @@ class AffineTransform(CoordinateTransform):
 
         return results
 
-    def equals(self, other):
+    def equals(self, other: CoordinateTransform, exclude: frozenset[Hashable] | None = None) -> bool:
         if not isinstance(other, AffineTransform):
             return False
         return self.affine == other.affine and self.dim_size == other.dim_size
@@ -136,7 +136,7 @@ class AxisAffineTransform(CoordinateTransform):
 
         return {self.dim: positions}
 
-    def equals(self, other):
+    def equals(self, other: CoordinateTransform, exclude: frozenset[Hashable] | None = None) -> bool:
         if not isinstance(other, AxisAffineTransform):
             return False
 
@@ -179,7 +179,7 @@ class AxisAffineTransform(CoordinateTransform):
 
     def __repr__(self) -> str:
         params = ", ".join(f"{pn}={getattr(self.affine, pn):.4g}" for pn in "abcdef")
-        return f"{type(self).__name__}({params}, axis={'x' if self.is_xaxis else 'y'}, dim={self.dim!r})"
+        return f"{type(self).__name__}({params}, axis={'X' if self.is_xaxis else 'Y'}, dim={self.dim!r})"
 
 
 class AxisAffineTransformIndex(CoordinateTransformIndex):

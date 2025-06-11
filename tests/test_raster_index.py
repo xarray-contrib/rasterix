@@ -123,9 +123,9 @@ def test_repr() -> None:
         """\
         RasterIndex(crs=None)
         'x':
-            AxisAffineTransformIndex(AxisAffineTransform(a=1, b=0, c=0.5, d=0, e=1, f=0.5, is_axis=True, dim='x'))
+            AxisAffineTransformIndex(AxisAffineTransform(a=1, b=0, c=0.5, d=0, e=1, f=0.5, axis=X, dim='x'))
         'y':
-            AxisAffineTransformIndex(AxisAffineTransform(a=1, b=0, c=0.5, d=0, e=1, f=0.5, is_axis=False, dim='y'))"""
+            AxisAffineTransformIndex(AxisAffineTransform(a=1, b=0, c=0.5, d=0, e=1, f=0.5, axis=Y, dim='y'))"""
     )
     actual = repr(index1)
     assert expected == actual
