@@ -179,7 +179,7 @@ class AxisAffineTransform(CoordinateTransform):
 
     def __repr__(self) -> str:
         params = ", ".join(f"{pn}={getattr(self.affine, pn):.4g}" for pn in "abcdef")
-        return f"{type(self).__name__}({params}, is_axis={self.is_xaxis}, dim={self.dim!r})"
+        return f"{type(self).__name__}({params}, axis={'x' if self.is_xaxis else 'y'}, dim={self.dim!r})"
 
 
 class AxisAffineTransformIndex(CoordinateTransformIndex):
