@@ -41,15 +41,18 @@ rasterize = [
     "rasterio",
     "rioxarray",
 ]
-exactextract = ["exactextract"]
+exactextract = ["exactextract", "sparse"]
 test = [
   "geodatasets",
+  "pooch",
   "dask-geopandas",
   "odc-geo",
   "rasterio",
   "rioxarray",
   "exactextract",
-  "netCDF4"
+  "sparse",
+  "netCDF4",
+  "hypothesis",
 ]
 
 [tool.hatch]
@@ -72,6 +75,7 @@ dependencies = [
     "coverage",
     "pytest",
     "pytest-cov",
+    "pytest-xdist"
 ]
 features = ["test"]
 
@@ -79,8 +83,8 @@ features = ["test"]
 python = ["3.10", "3.13"]
 
 [tool.hatch.envs.test.scripts]
-run-coverage = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
-run-coverage-html = "pytest --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+run-coverage = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
 run-pytest = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"

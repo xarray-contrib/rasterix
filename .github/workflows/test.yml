@@ -41,6 +41,15 @@ jobs:
         # TODO: remove when using next Xarray release (after v2025.6.0)
         run: |
           python -m pip install typing_extensions
+      # https://github.com/actions/cache/blob/main/tips-and-workarounds.md#update-a-cache
+      - name: Restore cached hypothesis directory
+        id: restore-hypothesis-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .hypothesis/
+          key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            cache-hypothesis-
       - name: Set Up Hatch Env
         run: |
           hatch env create test.py${{ matrix.python-version }}
@@ -48,6 +57,16 @@ jobs:
       - name: Run Tests
         run: |
           hatch env run --env test.py${{ matrix.python-version }} run-coverage
+
+      # explicitly save the cache so it gets updated, also do this even if it fails.
+      - name: Save cached hypothesis directory
+        id: save-hypothesis-cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .hypothesis/
+          key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
+
       # - name: Upload coverage
       #   uses: codecov/codecov-action@v5
       #   with:
