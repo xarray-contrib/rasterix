@@ -37,6 +37,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install hatch
+      - name: Install typing_extensions (temp fix)
+        # TODO: remove when using next Xarray release (after v2025.6.0)
+        run: |
+          python -m pip install typing_extensions
       - name: Set Up Hatch Env
         run: |
           hatch env create test.py${{ matrix.python-version }}
