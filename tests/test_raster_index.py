@@ -88,6 +88,17 @@ def test_equals(index_coord_name) -> None:
     assert not ds.xindexes[index_coord_name].equals(ds7.xindexes[index_coord_name])
 
 
+def test_join() -> None:
+    index_crs1 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
+    ds_crs1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index_crs1))
+
+    index_crs2 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:27700")
+    ds_crs2 = xr.Dataset(coords=xr.Coordinates.from_xindex(index_crs2))
+
+    with pytest.raises(ValueError, match="raster indexes.*do not have the same CRS"):
+        xr.align(ds_crs1, ds_crs2)
+
+
 def test_to_pandas_index() -> None:
     index = RasterIndex.from_transform(Affine.identity(), 12, 10)
     ds = xr.Dataset(coords=xr.Coordinates.from_xindex(index))

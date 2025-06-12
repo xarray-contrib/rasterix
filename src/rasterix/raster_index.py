@@ -15,6 +15,7 @@ from xarray.core.coordinate_transform import CoordinateTransform
 # TODO: import from public API once it is available
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
+from xarray.core.types import JoinOptions
 from xproj.typing import CRSAwareIndex
 
 from rasterix.rioxarray_compat import guess_dims
@@ -444,6 +445,16 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         return all(
             index.equals(other._wrapped_indexes[k])  # type: ignore[arg-type]
             for k, index in self._wrapped_indexes.items()
+        )
+
+    def join(self, other: RasterIndex, how: JoinOptions = "inner") -> RasterIndex:
+        if not self._proj_crs_equals(cast(CRSAwareIndex, other), allow_none=True):
+            raise ValueError(
+                "raster indexes on objects to align do not have the same CRS\n"
+                f"first index:\n{self!r}\n\nsecond index:\n{other!r}"
+            )
+        raise NotImplementedError(
+            f"RasterIndex doesn't support alignment with inner/outer join method yet\n{self!r}"
         )
 
     def to_pandas_index(self) -> pd.Index:
