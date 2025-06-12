@@ -502,11 +502,6 @@ class RasterIndex(Index):
         return new_index
 
     def join(self, other: RasterIndex, how) -> RasterIndex:
-        if not isinstance(other, RasterIndex):
-            raise ValueError(
-                f"Alignment is only supported between RasterIndexes. Received RasterIndex and {type(other)!r} instead"
-            )
-
         if set(self._wrapped_indexes.keys()) != set(other._wrapped_indexes.keys()):
             # TODO: better error message
             raise ValueError(
