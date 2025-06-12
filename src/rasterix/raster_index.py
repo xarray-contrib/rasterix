@@ -38,11 +38,11 @@ def _assert_transforms_are_compatible(*affines) -> None:
     # TODO: offsets could be multiples
     #       offset should be compatible too
     A1 = affines[0]
-    for A2 in affines[1:]:
-        assert A1.a == A2.a
-        assert A1.b == A2.b
-        assert A1.d == A2.d
-        assert A1.e == A2.e
+    for index, A2 in enumerate(affines[1:]):
+        if A1.a != A2.a or A1.b != A2.b or A1.d != A2.d or A1.e != A2.e:
+            raise ValueError(
+                f"Transform parameters are not compatible for affine 0: {A1}, and affine {index + 1} {A2}"
+            )
 
 
 class AffineTransform(CoordinateTransform):
@@ -573,4 +573,24 @@ def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
 def as_compatible_bboxes(*indexes: RasterIndex) -> tuple[BoundingBox, ...]:
     transforms = tuple(i.transform() for i in indexes)
     _assert_transforms_are_compatible(*transforms)
+
+    expected_off_x = tuple(t.c + i._shape["x"] * t.a for i, t in zip(indexes, transforms))
+    expected_off_y = tuple(t.f + i._shape["y"] * t.d for i, t in zip(indexes, transforms))
+
+    off_x = tuple(t.c for t in transforms)
+    off_y = tuple(t.c for t in transforms)
+
+    if all(o == off_x[0] for o in off_x[1:]) and all(o == off_y[0] for o in off_y[1:]):
+        raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
+
+    if any(a != b for a, b in zip(off_x, expected_off_x)):
+        raise ValueError(
+            f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
+        )
+
+    if any(a != b for a, b in zip(off_y, expected_off_y)):
+        raise ValueError(
+            f"Y offsets are incompatible. Provided offsets {off_y}, expected offsets: {expected_off_y}"
+        )
+
     return tuple(i.bbox for i in indexes)

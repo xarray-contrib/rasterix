@@ -68,7 +68,7 @@ def test_sel_slice():
     ],
 )
 def test_concat_and_combine_nested_1D(transforms, concat_dim):
-    """Models two side-by-side tiles in"""
+    """Models two side-by-side tiles"""
     crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
 
     datasets = [
@@ -146,7 +146,6 @@ def test_concat_and_combine_nested_1D(transforms, concat_dim):
     ],
 )
 def test_concat_errors(transforms, concat_dim):
-    """Models two side-by-side tiles in"""
     crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
 
     datasets = [
