@@ -490,7 +490,7 @@ class RasterIndex(Index):
 
         # Note: I am assuming that xarray has calling `align(..., exclude="x" [or 'y'])` already
         # and checked for equality along "y" [or 'x']
-        new_bbox = bbox_union(as_compatible_bboxes(*indexes))
+        new_bbox = bbox_union(as_compatible_bboxes(*indexes, concat_dim=dim))
         return indexes[0]._new_with_bbox(new_bbox)
 
     def _new_with_bbox(self, bbox: BoundingBox) -> Self:
@@ -508,13 +508,13 @@ class RasterIndex(Index):
                 "Alignment is only supported between RasterIndexes, when both contain compatible transforms."
             )
 
-        ours, theirs = as_compatible_bboxes(self, other)
+        ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
         if how == "outer":
             new_bbox = ours | theirs
         elif how == "inner":
             new_bbox = ours & theirs
         else:
-            raise NotImplementedError
+            raise NotImplementedError(f"{how=!r} not implemented yet for RasterIndex.")
 
         return self._new_with_bbox(new_bbox)
 
@@ -570,27 +570,38 @@ def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
     return affine, nx, ny
 
 
-def as_compatible_bboxes(*indexes: RasterIndex) -> tuple[BoundingBox, ...]:
+def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> tuple[BoundingBox, ...]:
     transforms = tuple(i.transform() for i in indexes)
     _assert_transforms_are_compatible(*transforms)
 
-    expected_off_x = tuple(t.c + i._shape["x"] * t.a for i, t in zip(indexes, transforms))
-    expected_off_y = tuple(t.f + i._shape["y"] * t.d for i, t in zip(indexes, transforms))
+    expected_off_x = (transforms[0].c,) + tuple(
+        t.c + i._shape["x"] * t.a for i, t in zip(indexes[:-1], transforms[:-1])
+    )
+    expected_off_y = (transforms[0].f,) + tuple(
+        t.f + i._shape["y"] * t.e for i, t in zip(indexes[:-1], transforms[:-1])
+    )
 
     off_x = tuple(t.c for t in transforms)
-    off_y = tuple(t.c for t in transforms)
+    off_y = tuple(t.f for t in transforms)
 
-    if all(o == off_x[0] for o in off_x[1:]) and all(o == off_y[0] for o in off_y[1:]):
-        raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
+    if concat_dim is not None:
+        if all(o == off_x[0] for o in off_x[1:]) and all(o == off_y[0] for o in off_y[1:]):
+            raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
 
-    if any(a != b for a, b in zip(off_x, expected_off_x)):
-        raise ValueError(
-            f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
-        )
+    if concat_dim == "x":
+        if any(off_y[0] != o for o in off_y[1:]):
+            raise ValueError("offsets must be identical in X when concatenating along Y")
+        if any(a != b for a, b in zip(off_x, expected_off_x)):
+            raise ValueError(
+                f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
+            )
+    elif concat_dim == "y":
+        if any(off_x[0] != o for o in off_x[1:]):
+            raise ValueError("offsets must be identical in X when concatenating along Y")
 
-    if any(a != b for a, b in zip(off_y, expected_off_y)):
-        raise ValueError(
-            f"Y offsets are incompatible. Provided offsets {off_y}, expected offsets: {expected_off_y}"
-        )
+        if any(a != b for a, b in zip(off_y, expected_off_y)):
+            raise ValueError(
+                f"Y offsets are incompatible. Provided offsets {off_y}, expected offsets: {expected_off_y}"
+            )
 
     return tuple(i.bbox for i in indexes)

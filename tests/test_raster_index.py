@@ -200,3 +200,29 @@ def test_concat_new_dim():
     ]
     datasets = list(map(assign_index, datasets))
     xr.concat(datasets, dim="time", join="exact")
+
+
+def test_combine_nested_2d():
+    """models 2d tiling"""
+    transforms = [
+        # row 1
+        "-50.0 5 0.0 0.0 0.0 -0.25",
+        "-40.0 5 0.0 0.0 0.0 -0.25",
+        "-30.0 5 0.0 0.0 0.0 -0.25",
+        # row 2
+        "-50.0 5 0.0 -1 0.0 -0.25",
+        "-40.0 5 0.0 -1 0.0 -0.25",
+        "-30.0 5 0.0 -1 0.0 -0.25",
+    ]
+    crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
+
+    datasets = [
+        xr.Dataset(
+            {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
+            coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transform})},
+        )
+        for transform in transforms
+    ]
+    datasets = list(map(assign_index, datasets))
+    datasets = [datasets[:3], datasets[3:]]
+    xr.combine_nested(datasets, concat_dim=["y", "x"])
