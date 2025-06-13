@@ -8,6 +8,15 @@ from xarray.testing import assert_identical
 
 from rasterix import RasterIndex, assign_index
 
+CRS_ATTRS = pyproj.CRS.from_epsg(4326).to_cf()
+
+
+def dataset_from_transform(transform: str) -> xr.Dataset:
+    return xr.Dataset(
+        {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
+        coords={"spatial_ref": ((), 0, CRS_ATTRS | {"GeoTransform": transform})},
+    ).pipe(assign_index)
+
 
 def test_rectilinear():
     source = "/vsicurl/https://noaadata.apps.nsidc.org/NOAA/G02135/south/daily/geotiff/2024/01_Jan/S_20240101_concentration_v3.0.tif"
@@ -69,16 +78,7 @@ def test_sel_slice():
 )
 def test_concat_and_combine_nested_1D(transforms, concat_dim):
     """Models two side-by-side tiles"""
-    crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
-
-    datasets = [
-        xr.Dataset(
-            {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
-            coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transform})},
-        )
-        for transform in transforms
-    ]
-    datasets = list(map(assign_index, datasets))
+    datasets = list(map(dataset_from_transform, transforms))
 
     if concat_dim == "x":
         new_data = np.ones((4, 2 * len(transforms)))
@@ -86,7 +86,7 @@ def test_concat_and_combine_nested_1D(transforms, concat_dim):
         new_data = np.ones((4 * len(transforms), 2))
     expected = xr.Dataset(
         {"foo": (("y", "x"), new_data, {"grid_mapping": "spatial_ref"})},
-        coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transforms[0]})},
+        coords={"spatial_ref": ((), 0, CRS_ATTRS | {"GeoTransform": transforms[0]})},
     ).pipe(assign_index)
 
     for actual in [
@@ -146,17 +146,7 @@ def test_concat_and_combine_nested_1D(transforms, concat_dim):
     ],
 )
 def test_concat_errors(transforms, concat_dim):
-    crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
-
-    datasets = [
-        xr.Dataset(
-            {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
-            coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transform})},
-        )
-        for transform in transforms
-    ]
-    datasets = list(map(assign_index, datasets))
-
+    datasets = list(map(dataset_from_transform, transforms))
     with pytest.raises(ValueError):
         xr.combine_nested(datasets, concat_dim=concat_dim, combine_attrs="override")
     with pytest.raises(ValueError):
@@ -189,16 +179,7 @@ def test_concat_new_dim():
         "-50.0 0.5 0.0 0.0 0.0 -0.25",
         "-50.0 0.5 0.0 0.0 0.0 -0.25",
     ]
-    crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
-
-    datasets = [
-        xr.Dataset(
-            {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
-            coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transform})},
-        )
-        for transform in transforms
-    ]
-    datasets = list(map(assign_index, datasets))
+    datasets = list(map(dataset_from_transform, transforms))
     xr.concat(datasets, dim="time", join="exact")
 
 
@@ -214,15 +195,7 @@ def test_combine_nested_2d():
         "-40.0 5 0.0 -1 0.0 -0.25",
         "-30.0 5 0.0 -1 0.0 -0.25",
     ]
-    crs_attrs = pyproj.CRS.from_epsg(4326).to_cf()
 
-    datasets = [
-        xr.Dataset(
-            {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
-            coords={"spatial_ref": ((), 0, crs_attrs | {"GeoTransform": transform})},
-        )
-        for transform in transforms
-    ]
-    datasets = list(map(assign_index, datasets))
+    datasets = list(map(dataset_from_transform, transforms))
     datasets = [datasets[:3], datasets[3:]]
     xr.combine_nested(datasets, concat_dim=["y", "x"])
