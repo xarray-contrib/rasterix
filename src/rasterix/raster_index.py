@@ -35,8 +35,6 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
 
 
 def _assert_transforms_are_compatible(*affines) -> None:
-    # TODO: offsets could be multiples
-    #       offset should be compatible too
     A1 = affines[0]
     for index, A2 in enumerate(affines[1:]):
         if A1.a != A2.a or A1.b != A2.b or A1.d != A2.d or A1.e != A2.e:
