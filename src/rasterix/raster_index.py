@@ -518,7 +518,7 @@ class RasterIndex(Index):
 
     def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
         affine = self.transform()
-        ours, theirs = as_compatible_bboxes(self, other)
+        ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
         inter = bbox_intersection([ours, theirs])
         dx = affine.a
         dy = affine.e

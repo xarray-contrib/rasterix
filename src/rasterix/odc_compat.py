@@ -255,6 +255,8 @@ def snap_grid(
 
     off = off_pix * abs(res)
     _tx, nx = _snap_edge(x0 - off, x1 - off, res, tol)
+    if x1 == x0:
+        nx = 0
     return _tx + off, nx
 
 

@@ -199,3 +199,22 @@ def test_combine_nested_2d():
     datasets = list(map(dataset_from_transform, transforms))
     datasets = [datasets[:3], datasets[3:]]
     xr.combine_nested(datasets, concat_dim=["y", "x"])
+
+
+def test_align():
+    transforms = [
+        "-50.0 5 0.0 0.0 0.0 -0.25",
+        "-40.0 5 0.0 0.0 0.0 -0.25",
+    ]
+    expected_affine = Affine(5, 0, -50, 0, -0.25, 0)
+    datasets = list(map(dataset_from_transform, transforms))
+
+    aligned = xr.align(*datasets, join="outer")
+    assert all(a.sizes == {"x": 4, "y": 4} for a in aligned)
+    assert all(a.xindexes["x"].transform() == expected_affine for a in aligned)
+
+    aligned = xr.align(*datasets, join="inner")
+    assert all(a.sizes["x"] == 0 for a in aligned)
+
+    with pytest.raises(xr.AlignmentError):
+        aligned = xr.align(*datasets, join="exact")
