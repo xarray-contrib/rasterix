@@ -33,6 +33,7 @@ dependencies = [
     "xarray>=2025",
 ]
 dynamic=["version"]
+
 [project.optional-dependencies]
 dask = ["dask-geopandas"]
 rasterize = [
@@ -53,6 +54,19 @@ test = [
   "netCDF4",
   "hypothesis",
 ]
+docs = [
+    # Doc building
+    'sphinx',
+    'sphinx-autobuild>=2021.3.14',
+    'sphinx-copybutton',
+    'sphinx-remove-toctrees',
+    'sphinx-codeautolink',
+    'myst-parser',
+    'myst-nb',
+    'furo',
+    'numpydoc',
+]
+
 
 [tool.hatch]
 version.source = "vcs"
