@@ -113,14 +113,6 @@ def test_concat_and_combine_nested_1D(transforms, concat_dim):
         ),
         (
             [
-                # incompatible, different origins
-                "-50.0 5 0.0 -2.0 0.0 -0.5",
-                "-40.0 5 0.0 0.0 0.0 -0.5",
-            ],
-            "x",
-        ),
-        (
-            [
                 # incompatible, different Δx
                 "-50.0 2 0.0 0.0 0.0 -0.5",
                 "-40.0 5 0.0 0.0 0.0 -0.5",
@@ -137,7 +129,7 @@ def test_concat_and_combine_nested_1D(transforms, concat_dim):
         ),
         (
             [
-                # exact same transform, makes no sense to concat
+                # exact same transform, makes no sense to concat in X or Y
                 "-50.0 5 0.0 0.0 0.0 -0.5",
                 "-50.0 5 0.0 0.0 0.0 -0.5",
             ],
@@ -150,6 +142,23 @@ def test_concat_errors(transforms, concat_dim):
     with pytest.raises(ValueError):
         xr.combine_nested(datasets, concat_dim=concat_dim, combine_attrs="override")
     with pytest.raises(ValueError):
+        xr.concat(datasets, dim=concat_dim, combine_attrs="override")
+
+
+def test_concat_error_alignment():
+    transforms, concat_dim = (
+        [
+            # incompatible, different origins
+            "-50.0 5 0.0 -2.0 0.0 -0.5",
+            "-40.0 5 0.0 0.0 0.0 -0.5",
+        ],
+        "x",
+    )
+
+    datasets = list(map(dataset_from_transform, transforms))
+    with pytest.raises(AssertionError):
+        xr.combine_nested(datasets, concat_dim=concat_dim, combine_attrs="override")
+    with pytest.raises(AssertionError):
         xr.concat(datasets, dim=concat_dim, combine_attrs="override")
 
 
