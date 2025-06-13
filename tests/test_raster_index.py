@@ -210,6 +210,24 @@ def test_combine_nested_2d():
     xr.combine_nested(datasets, concat_dim=["y", "x"])
 
 
+@pytest.mark.skip(reason="xarray converts to PandasIndex")
+def test_combine_by_coords():
+    """models 2d tiling"""
+    transforms = [
+        # row 1
+        "-50.0 5 0.0 0.0 0.0 -0.25",
+        "-40.0 5 0.0 0.0 0.0 -0.25",
+        "-30.0 5 0.0 0.0 0.0 -0.25",
+        # row 2
+        "-50.0 5 0.0 -1 0.0 -0.25",
+        "-40.0 5 0.0 -1 0.0 -0.25",
+        "-30.0 5 0.0 -1 0.0 -0.25",
+    ]
+
+    datasets = list(map(dataset_from_transform, transforms))
+    xr.combine_by_coords(datasets)
+
+
 def test_align():
     transforms = [
         "-50.0 5 0.0 0.0 0.0 -0.25",
