@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import math
 import textwrap
-from collections.abc import Hashable, Mapping
-from typing import Any, TypeVar
+from collections.abc import Hashable, Iterable, Mapping, Sequence
+from typing import Any, Self, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,7 @@ from xarray.core.coordinate_transform import CoordinateTransform
 from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
 
+from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, maybe_int, snap_grid
 from rasterix.rioxarray_compat import guess_dims
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
@@ -30,6 +32,15 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
+
+
+def _assert_transforms_are_compatible(*affines) -> None:
+    A1 = affines[0]
+    for index, A2 in enumerate(affines[1:]):
+        if A1.a != A2.a or A1.b != A2.b or A1.d != A2.d or A1.e != A2.e:
+            raise ValueError(
+                f"Transform parameters are not compatible for affine 0: {A1}, and affine {index + 1} {A2}"
+            )
 
 
 class AffineTransform(CoordinateTransform):
@@ -76,7 +87,9 @@ class AffineTransform(CoordinateTransform):
 
         return results
 
-    def equals(self, other):
+    def equals(self, other, *, exclude):
+        if exclude is not None:
+            raise NotImplementedError
         if not isinstance(other, AffineTransform):
             return False
         return self.affine == other.affine and self.dim_size == other.dim_size
@@ -129,9 +142,11 @@ class AxisAffineTransform(CoordinateTransform):
 
         return {self.dim: positions}
 
-    def equals(self, other):
+    def equals(self, other, *, exclude):
         if not isinstance(other, AxisAffineTransform):
             return False
+        if exclude is not None:
+            raise NotImplementedError
 
         # only compare the affine parameters of the relevant axis
         if self.is_xaxis:
@@ -304,6 +319,7 @@ class RasterIndex(Index):
     """
 
     _wrapped_indexes: dict[WrappedIndexCoords, WrappedIndex]
+    _shape: dict[str, int]
 
     def __init__(self, indexes: Mapping[WrappedIndexCoords, WrappedIndex]):
         idx_keys = list(indexes)
@@ -321,6 +337,13 @@ class RasterIndex(Index):
         assert axis_dependent ^ axis_independent
 
         self._wrapped_indexes = dict(indexes)
+        if axis_independent:
+            self._shape = {
+                "x": self._wrapped_indexes["x"].axis_transform.size,
+                "y": self._wrapped_indexes["y"].axis_transform.size,
+            }
+        else:
+            self._shape = next(iter(self._wrapped_indexes.values())).dim_size
 
     @classmethod
     def from_transform(
@@ -396,7 +419,9 @@ class RasterIndex(Index):
 
         return merge_sel_results(results)
 
-    def equals(self, other: Index) -> bool:
+    def equals(self, other: Index, *, exclude=None) -> bool:
+        if exclude is None:
+            exclude = {}
         if not isinstance(other, RasterIndex):
             return False
         if set(self._wrapped_indexes) != set(other._wrapped_indexes):
@@ -405,6 +430,7 @@ class RasterIndex(Index):
         return all(
             index.equals(other._wrapped_indexes[k])  # type: ignore[arg-type]
             for k, index in self._wrapped_indexes.items()
+            if k not in exclude
         )
 
     def to_pandas_index(self) -> pd.Index:
@@ -428,6 +454,9 @@ class RasterIndex(Index):
 
     def transform(self) -> Affine:
         """Returns Affine transform for top-left corners."""
+        return self.center_transform() * Affine.translation(-0.5, -0.5)
+
+    def center_transform(self) -> Affine:
         if len(self._wrapped_indexes) > 1:
             x = self._wrapped_indexes["x"].axis_transform.affine
             y = self._wrapped_indexes["y"].axis_transform.affine
@@ -435,4 +464,142 @@ class RasterIndex(Index):
         else:
             index = next(iter(self._wrapped_indexes.values()))
             aff = index.affine
-        return aff * Affine.translation(-0.5, -0.5)
+        return aff
+
+    @property
+    def bbox(self) -> BoundingBox:
+        return BoundingBox.from_transform(
+            shape=tuple(self._shape[k] for k in ("y", "x")),
+            transform=self.transform(),
+        )
+
+    @classmethod
+    def concat(
+        cls,
+        indexes: Sequence[Self],
+        dim: Hashable,
+        positions: Iterable[Iterable[int]] | None = None,
+    ) -> Self:
+        if len(indexes) == 1:
+            return next(iter(indexes))
+
+        if positions is not None:
+            raise NotImplementedError
+
+        # Note: I am assuming that xarray has calling `align(..., exclude="x" [or 'y'])` already
+        # and checked for equality along "y" [or 'x']
+        new_bbox = bbox_union(as_compatible_bboxes(*indexes, concat_dim=dim))
+        return indexes[0]._new_with_bbox(new_bbox)
+
+    def _new_with_bbox(self, bbox: BoundingBox) -> Self:
+        affine = self.transform()
+        new_affine, Nx, Ny = bbox_to_affine(bbox, rx=affine.a, ry=affine.e)
+        # TODO: set xdim, ydim explicitly
+        new_index = self.from_transform(new_affine, width=Nx, height=Ny)
+        assert new_index.bbox == bbox
+        return new_index
+
+    def join(self, other: RasterIndex, how) -> RasterIndex:
+        if set(self._wrapped_indexes.keys()) != set(other._wrapped_indexes.keys()):
+            # TODO: better error message
+            raise ValueError(
+                "Alignment is only supported between RasterIndexes, when both contain compatible transforms."
+            )
+
+        ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
+        if how == "outer":
+            new_bbox = ours | theirs
+        elif how == "inner":
+            new_bbox = ours & theirs
+        else:
+            raise NotImplementedError(f"{how=!r} not implemented yet for RasterIndex.")
+
+        return self._new_with_bbox(new_bbox)
+
+    def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
+        affine = self.transform()
+        ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
+        inter = bbox_intersection([ours, theirs])
+        dx = affine.a
+        dy = affine.e
+
+        # Fraction of a pixel that can be ignored, defaults to 1/100. Bounding box of the output
+        # geobox is allowed to be smaller than supplied bounding box by that amount.
+        # FIXME: translate user-provided `tolerance` to `tol`
+        tol: float = 0.01
+
+        indexers = {}
+        indexers["x"] = get_indexer(
+            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other._shape["x"]
+        )
+        indexers["y"] = get_indexer(
+            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape["y"]
+        )
+        return indexers
+
+
+def get_indexer(off, our_off, start, stop, spacing, tol, size) -> np.ndarray:
+    istart = math.ceil(maybe_int((start - off) / spacing, tol))
+
+    ours_istart = math.ceil(maybe_int((start - our_off) / spacing, tol))
+    ours_istop = math.ceil(maybe_int((stop - our_off) / spacing, tol))
+
+    idxr = np.concatenate(
+        [
+            np.full((istart,), fill_value=-1),
+            np.arange(ours_istart, ours_istop),
+            np.full((size - istart - (ours_istop - ours_istart),), fill_value=-1),
+        ]
+    )
+    return idxr
+
+
+def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
+    # Fraction of a pixel that can be ignored, defaults to 1/100. Bounding box of the output
+    # geobox is allowed to be smaller than supplied bounding box by that amount.
+    # FIXME: translate user-provided `tolerance` to `tol`
+    tol: float = 0.01
+
+    offx, nx = snap_grid(bbox.left, bbox.right, rx, 0, tol=tol)
+    offy, ny = snap_grid(bbox.bottom, bbox.top, ry, 0, tol=tol)
+
+    affine = Affine.translation(offx, offy) * Affine.scale(rx, ry)
+
+    return affine, nx, ny
+
+
+def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> tuple[BoundingBox, ...]:
+    transforms = tuple(i.transform() for i in indexes)
+    _assert_transforms_are_compatible(*transforms)
+
+    expected_off_x = (transforms[0].c,) + tuple(
+        t.c + i._shape["x"] * t.a for i, t in zip(indexes[:-1], transforms[:-1])
+    )
+    expected_off_y = (transforms[0].f,) + tuple(
+        t.f + i._shape["y"] * t.e for i, t in zip(indexes[:-1], transforms[:-1])
+    )
+
+    off_x = tuple(t.c for t in transforms)
+    off_y = tuple(t.f for t in transforms)
+
+    if concat_dim is not None:
+        if all(o == off_x[0] for o in off_x[1:]) and all(o == off_y[0] for o in off_y[1:]):
+            raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
+
+    if concat_dim == "x":
+        if any(off_y[0] != o for o in off_y[1:]):
+            raise ValueError("offsets must be identical in X when concatenating along Y")
+        if any(a != b for a, b in zip(off_x, expected_off_x)):
+            raise ValueError(
+                f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
+            )
+    elif concat_dim == "y":
+        if any(off_x[0] != o for o in off_x[1:]):
+            raise ValueError("offsets must be identical in X when concatenating along Y")
+
+        if any(a != b for a, b in zip(off_y, expected_off_y)):
+            raise ValueError(
+                f"Y offsets are incompatible. Provided offsets {off_y}, expected offsets: {expected_off_y}"
+            )
+
+    return tuple(i.bbox for i in indexes)
