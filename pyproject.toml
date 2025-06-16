@@ -66,6 +66,7 @@ docs = [
     'myst-nb',
     'furo',
     'numpydoc',
+    'sphinxext-opengraph[social_cards]',
 ]
 
 

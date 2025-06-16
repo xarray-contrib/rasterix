@@ -38,6 +38,7 @@ extensions = [
     "myst_nb",
     "sphinx_codeautolink",
     "sphinx_remove_toctrees",
+    "sphinxext.opengraph",
 ]
 
 codeautolink_concat_default = True
@@ -85,6 +86,8 @@ exclude_patterns = ["_build"]
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = "igor"
+
+ogp_site_url = "https://rasterix.readthedocs.io/"
 
 
 # -- Options for HTML output ---------------------------------------------------
