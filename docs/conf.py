@@ -190,3 +190,5 @@ napoleon_type_aliases = {
     "pd.Index": "~pandas.Index",
     "pd.NaT": "~pandas.NaT",
 }
+
+numpydoc_class_members_toctree = False

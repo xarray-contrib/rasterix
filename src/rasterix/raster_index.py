@@ -309,15 +309,14 @@ class RasterIndex(Index):
     affine transformation and prior data selection (if any):
 
     - The affine transformation is not rectilinear or has rotation: this index
-      encapsulates a single `CoordinateTransformIndex` object for both the x and
-      y axis (2-dimensional) coordinates.
+      encapsulates a single :py:class:`xarray.indexes.CoordinateTransformIndex` object
+      for both the x and y axis (2-dimensional) coordinates.
 
     - The affine transformation is rectilinear ands has no rotation: this index
       encapsulates one or two index objects for either the x or y axis or both
       (1-dimensional) coordinates. The index type is either a subclass of
-      `CoordinateTransformIndex` that supports slicing or `PandasIndex` (e.g.,
-      after data selection at arbitrary locations).
-
+      :py:class:`xarray.indexes.CoordinateTransformIndex` that supports slicing or
+      :py:class:`xarray.indexes.PandasIndex` (e.g., after data selection at arbitrary locations).
     """
 
     _wrapped_indexes: dict[WrappedIndexCoords, WrappedIndex]
@@ -351,6 +350,12 @@ class RasterIndex(Index):
     def from_transform(
         cls, affine: Affine, width: int, height: int, x_dim: str = "x", y_dim: str = "y"
     ) -> RasterIndex:
+        """Create a RasterIndex from an AffineTransform and dimension sizes.
+
+        Returns
+        -------
+        RasterIndex
+        """
         indexes: dict[WrappedIndexCoords, AxisAffineTransformIndex | CoordinateTransformIndex]
 
         # pixel centered coordinates
@@ -455,10 +460,11 @@ class RasterIndex(Index):
         return "RasterIndex\n" + "\n".join(items)
 
     def transform(self) -> Affine:
-        """Returns Affine transform for top-left corners."""
+        """Affine transform for top-left corners."""
         return self.center_transform() * Affine.translation(-0.5, -0.5)
 
     def center_transform(self) -> Affine:
+        """Affine transform for cell centers."""
         if len(self._wrapped_indexes) > 1:
             x = self._wrapped_indexes["x"].axis_transform.affine
             y = self._wrapped_indexes["y"].axis_transform.affine
@@ -470,6 +476,12 @@ class RasterIndex(Index):
 
     @property
     def bbox(self) -> BoundingBox:
+        """Bounding Box for index.
+
+        Returns
+        -------
+        BoundingBox
+        """
         return BoundingBox.from_transform(
             shape=tuple(self._shape[k] for k in ("y", "x")),
             transform=self.transform(),
