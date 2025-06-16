@@ -54,6 +54,8 @@ test = [
   "hypothesis",
 ]
 docs = [
+    'pyproj',
+    'rioxarray', # TODO: remove once assign_index doesn't need it.
     # Doc building
     'sphinx',
     'sphinx-autobuild>=2021.3.14',

@@ -22,6 +22,8 @@ T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
 
 def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None) -> T_Xarray:
+    import rioxarray  # noqa
+
     if x_dim is None or y_dim is None:
         guessed_x, guessed_y = guess_dims(obj)
     x_dim = x_dim or guessed_x

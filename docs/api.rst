@@ -1,7 +1,7 @@
 .. currentmodule:: rasterix
 
-API Reference
--------------
+API
+---
 
 Functions
 ~~~~~~~~~

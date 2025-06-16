@@ -48,7 +48,11 @@ extlinks = {
 }
 
 templates_path = ["_templates"]
-source_suffix = [".rst"]
+source_suffix = {
+    ".rst": "restructuredtext",
+    ".md": "myst-nb",
+    ".ipynb": "myst-nb",
+}
 master_doc = "index"
 language = "en"
 
@@ -57,13 +61,15 @@ remove_from_toctrees = ["generated/*"]
 # General information about the project.
 project = "rasterix"
 current_year = datetime.datetime.now().year
-copyright = f"2021-{current_year}, rasterix contributors"
+copyright = f"2025-{current_year}, rasterix contributors"
 author = "Rasterix Contributors"
 
 # Myst_nb options
 nb_execution_excludepatterns = []
 nb_execution_raise_on_error = True
 nb_execution_mode = "cache"
+nb_execution_show_tb = True
+nb_remove_cell_tags = ["remove-cell"]
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
@@ -84,6 +90,7 @@ pygments_style = "igor"
 # -- Options for HTML output ---------------------------------------------------
 
 html_theme = "furo"
+html_logo = "rasterix.png"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
@@ -116,6 +123,7 @@ intersphinx_mapping = {
     "numpy": ("https://numpy.org/doc/stable", None),
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
     "xproj": ("https://xproj.readthedocs.io/en/stable/", None),
+    "pyproj": ("https://pyproj4.github.io/pyproj/stable/", None),
 }
 
 autosummary_generate = True
