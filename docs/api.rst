@@ -1,7 +1,7 @@
 .. currentmodule:: rasterix
 
-API Reference
--------------
+API
+---
 
 Functions
 ~~~~~~~~~
@@ -10,3 +10,12 @@ Functions
     :toctree: generated/
 
     assign_index
+
+
+RasterIndex
+~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: generated/
+
+    RasterIndex

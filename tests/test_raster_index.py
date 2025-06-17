@@ -94,7 +94,6 @@ def test_concat_and_combine_nested_1D(transforms, concat_dim):
         xr.concat(datasets, dim=concat_dim),
     ]:
         assert_identical(actual, expected)
-        assert_identical(actual, expected)
         concat_coord = xr.concat([ds[concat_dim] for ds in datasets], dim=concat_dim)
         assert_identical(actual[concat_dim], concat_coord)
 
@@ -189,7 +188,11 @@ def test_concat_new_dim():
         "-50.0 0.5 0.0 0.0 0.0 -0.25",
     ]
     datasets = list(map(dataset_from_transform, transforms))
-    xr.concat(datasets, dim="time", join="exact")
+    actual = xr.concat(datasets, dim="time", join="exact")
+    expected = xr.concat(
+        tuple(map(lambda ds: ds.drop_indexes(["x", "y"]), datasets)), dim="time", join="exact"
+    ).pipe(assign_index)
+    assert_identical(actual, expected)
 
 
 def test_combine_nested_2d():
@@ -207,7 +210,12 @@ def test_combine_nested_2d():
 
     datasets = list(map(dataset_from_transform, transforms))
     datasets = [datasets[:3], datasets[3:]]
-    xr.combine_nested(datasets, concat_dim=["y", "x"])
+    actual = xr.combine_nested(datasets, concat_dim=["y", "x"], combine_attrs="identical")
+    expected = xr.Dataset(
+        {"foo": (("y", "x"), np.ones((8, 6)), {"grid_mapping": "spatial_ref"})},
+        coords={"spatial_ref": ((), 0, CRS_ATTRS | {"GeoTransform": transforms[0]})},
+    ).pipe(assign_index)
+    assert_identical(actual, expected)
 
 
 @pytest.mark.skip(reason="xarray converts to PandasIndex")
