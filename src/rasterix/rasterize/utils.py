@@ -6,22 +6,25 @@ from typing import TYPE_CHECKING
 import geopandas as gpd
 import numpy as np
 import xarray as xr
-from odc.geo.geobox import GeoboxTiles
+from affine import Affine
 
 if TYPE_CHECKING:
     import dask.array
     import dask_geopandas
 
 
-def tiles_to_array(tiles: GeoboxTiles) -> np.ndarray:
-    shape = tiles.shape
-    array = np.empty(shape=(shape.y, shape.x), dtype=object)
-    for i in range(shape.x):
-        for j in range(shape.y):
-            array[j, i] = tiles[j, i]
-
-    assert array.shape == tiles.shape
-    return array
+def get_affine(obj: xr.Dataset | xr.DataArray, *, xdim="x", ydim="y") -> Affine:
+    spatial_ref = obj.coords["spatial_ref"]
+    if "GeoTransform" in spatial_ref.attrs:
+        return Affine.from_gdal(*map(float, spatial_ref.attrs["GeoTransform"].split(" ")))
+    else:
+        x = obj.coords[xdim]
+        y = obj.coords[ydim]
+        dx = x[1] - x[0]
+        dy = y[1] - y[0]
+        return Affine.translation(
+            x[0] - dx / 2, (y[0] - dy / 2) if dy > 0 else (y[-1] + dy / 2)
+        ) * Affine.scale(dx, dy)
 
 
 def is_in_memory(*, obj, geometries) -> bool:
@@ -59,17 +62,11 @@ def prepare_for_dask(
     ydim: str,
     geoms_rechunk_size: int | None,
 ):
-    from dask.array import from_array
-
-    box = obj.odc.geobox
-
     chunks = (
         obj.chunksizes.get(ydim, obj.sizes[ydim]),
         obj.chunksizes.get(xdim, obj.sizes[ydim]),
     )
-    tiles = GeoboxTiles(box, tile_shape=chunks)
-    tiles_array = from_array(tiles_to_array(tiles), chunks=(1, 1))
     geom_array = geometries_as_dask_array(geometries)
     if geoms_rechunk_size is not None:
         geom_array = geom_array.rechunk({0: geoms_rechunk_size})
-    return chunks, tiles_array, geom_array
+    return chunks, geom_array
