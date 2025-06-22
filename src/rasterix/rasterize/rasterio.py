@@ -1,9 +1,10 @@
 # rasterio wrappers
 from __future__ import annotations
 
-from collections.abc import Sequence
+import functools
+from collections.abc import Callable, Sequence
 from functools import partial
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 import geopandas as gpd
 import numpy as np
@@ -15,11 +16,54 @@ from rasterio.features import rasterize as rasterize_rio
 
 from .utils import get_affine, is_in_memory, prepare_for_dask
 
+F = TypeVar("F", bound=Callable[..., Any])
+
 if TYPE_CHECKING:
     import dask_geopandas
 
 YAXIS = 0
 XAXIS = 1
+
+
+def with_rio_env(func: F) -> F:
+    """
+    Decorator that handles the 'env' and 'clear_cache' kwargs while preserving them in the function signature.
+
+    This version keeps the parameters visible in the function signature but handles
+    the context management and cache clearing automatically.
+    """
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        # Get the parameters but don't remove them from kwargs yet
+        env = kwargs.get("env")
+        clear_cache = kwargs.get("clear_cache", False)
+
+        # Create default env if None
+        if env is None:
+            env = rio.Env()
+
+        # Execute the function within the env context
+        with env:
+            # Remove env and clear_cache from kwargs before calling the wrapped function
+            # since the function shouldn't handle the context management
+            kwargs_without_managed = {k: v for k, v in kwargs.items() if k not in ("env", "clear_cache")}
+            result = func(*args, **kwargs_without_managed)
+
+        # Handle cache clearing after the main operation
+        if clear_cache:
+            with rio.Env(GDAL_CACHEMAX=0):
+                try:
+                    from osgeo import gdal
+
+                    # attempt to force-clear the GDAL cache
+                    assert gdal.GetCacheMax() == 0
+                except ImportError:
+                    pass
+
+        return result
+
+    return wrapper
 
 
 def dask_rasterize_wrapper(
@@ -52,6 +96,7 @@ def dask_rasterize_wrapper(
     )[np.newaxis, :, :]
 
 
+@with_rio_env
 def rasterize_geometries(
     geometries: Sequence[Any],
     *,
@@ -63,33 +108,12 @@ def rasterize_geometries(
     clear_cache: bool = False,
     **kwargs,
 ):
-    # From https://rasterio.readthedocs.io/en/latest/api/rasterio.features.html#rasterio.features.rasterize
-    #    The out array will be copied and additional temporary raster memory equal to 2x the smaller of out data
-    #    or GDAL’s max cache size (controlled by GDAL_CACHEMAX, default is 5% of the computer’s physical memory) is required.
-    #    If GDAL max cache size is smaller than the output data, the array of shapes will be iterated multiple times.
-    #    Performance is thus a linear function of buffer size. For maximum speed, ensure that GDAL_CACHEMAX
-    #    is larger than the size of out or out_shape.
-    if env is None:
-        # out_size = dtype.itemsize * math.prod(tile.shape)
-        # env = rio.Env(GDAL_CACHEMAX=1.2 * out_size)
-        # FIXME: figure out a good default
-        env = rio.Env()
-    with env:
-        res = rasterize_rio(
-            zip(geometries, range(offset, offset + len(geometries)), strict=True),
-            out_shape=shape,
-            transform=affine,
-            **kwargs,
-        )
-    if clear_cache:
-        with rio.Env(GDAL_CACHEMAX=0):
-            try:
-                from osgeo import gdal
-
-                # attempt to force-clear the GDAL cache
-                assert gdal.GetCacheMax() == 0
-            except ImportError:
-                pass
+    res = rasterize_rio(
+        zip(geometries, range(offset, offset + len(geometries)), strict=True),
+        out_shape=shape,
+        transform=affine,
+        **kwargs,
+    )
     assert res.shape == shape
     return res
 
@@ -242,6 +266,7 @@ def dask_mask_wrapper(
     )[np.newaxis, :, :]
 
 
+@with_rio_env
 def np_geometry_mask(
     geometries: Sequence[Any],
     *,
@@ -253,28 +278,7 @@ def np_geometry_mask(
     clear_cache: bool = False,
     **kwargs,
 ) -> np.ndarray[Any, np.dtype[np.bool_]]:
-    # From https://rasterio.readthedocs.io/en/latest/api/rasterio.features.html#rasterio.features.rasterize
-    #    The out array will be copied and additional temporary raster memory equal to 2x the smaller of out data
-    #    or GDAL’s max cache size (controlled by GDAL_CACHEMAX, default is 5% of the computer’s physical memory) is required.
-    #    If GDAL max cache size is smaller than the output data, the array of shapes will be iterated multiple times.
-    #    Performance is thus a linear function of buffer size. For maximum speed, ensure that GDAL_CACHEMAX
-    #    is larger than the size of out or out_shape.
-    if env is None:
-        # out_size = np.bool_.itemsize * math.prod(tile.shape)
-        # env = rio.Env(GDAL_CACHEMAX=1.2 * out_size)
-        # FIXME: figure out a good default
-        env = rio.Env()
-    with env:
-        res = geometry_mask(geometries, out_shape=shape, transform=affine, **kwargs)
-    if clear_cache:
-        with rio.Env(GDAL_CACHEMAX=0):
-            try:
-                from osgeo import gdal
-
-                # attempt to force-clear the GDAL cache
-                assert gdal.GetCacheMax() == 0
-            except ImportError:
-                pass
+    res = geometry_mask(geometries, out_shape=shape, transform=affine, **kwargs)
     assert res.shape == shape
     return res
 
