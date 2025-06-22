@@ -27,30 +27,22 @@ XAXIS = 1
 
 def with_rio_env(func: F) -> F:
     """
-    Decorator that handles the 'env' and 'clear_cache' kwargs while preserving them in the function signature.
-
-    This version keeps the parameters visible in the function signature but handles
-    the context management and cache clearing automatically.
+    Decorator that handles the 'env' and 'clear_cache' kwargs.
     """
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
-        # Get the parameters but don't remove them from kwargs yet
-        env = kwargs.get("env")
-        clear_cache = kwargs.get("clear_cache", False)
+        env = kwargs.pop("env", None)
+        clear_cache = kwargs.pop("clear_cache", False)
 
-        # Create default env if None
         if env is None:
             env = rio.Env()
 
-        # Execute the function within the env context
         with env:
             # Remove env and clear_cache from kwargs before calling the wrapped function
             # since the function shouldn't handle the context management
-            kwargs_without_managed = {k: v for k, v in kwargs.items() if k not in ("env", "clear_cache")}
-            result = func(*args, **kwargs_without_managed)
+            result = func(*args, **kwargs)
 
-        # Handle cache clearing after the main operation
         if clear_cache:
             with rio.Env(GDAL_CACHEMAX=0):
                 try:
@@ -161,14 +153,15 @@ def rasterize(
     """
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
-    affine = get_affine(obj, xdim=xdim, ydim=ydim)
-    rasterize_kwargs = dict(all_touched=all_touched, merge_alg=merge_alg)
+
+    rasterize_kwargs = dict(
+        all_touched=all_touched, merge_alg=merge_alg, affine=get_affine(obj, xdim=xdim, ydim=ydim)
+    )
     # FIXME: box.crs == geometries.crs
     if is_in_memory(obj=obj, geometries=geometries):
         geom_array = geometries.to_numpy().squeeze(axis=1)
         rasterized = rasterize_geometries(
             geom_array.tolist(),
-            affine=affine,
             shape=(obj.sizes[ydim], obj.sizes[xdim]),
             offset=0,
             dtype=np.min_scalar_type(len(geometries)),
@@ -208,7 +201,6 @@ def rasterize(
             fill=0,  # good identity value for both sum & replace.
             **rasterize_kwargs,
             dtype_=dtype,
-            affine=affine,
         )
         if merge_alg is MergeAlg.replace:
             rasterized = rasterized.max(axis=0)
@@ -325,14 +317,14 @@ def geometry_clip(
     invert = not invert  # rioxarray clip convention -> rasterio geometry_mask convention
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
-    affine = get_affine(obj, xdim=xdim, ydim=ydim)
-    geometry_mask_kwargs = dict(all_touched=all_touched, invert=invert)
+    geometry_mask_kwargs = dict(
+        all_touched=all_touched, invert=invert, affine=get_affine(obj, xdim=xdim, ydim=ydim)
+    )
 
     if is_in_memory(obj=obj, geometries=geometries):
         geom_array = geometries.to_numpy().squeeze(axis=1)
         mask = np_geometry_mask(
             geom_array.tolist(),
-            affine=affine,
             shape=(obj.sizes[ydim], obj.sizes[xdim]),
             env=env,
             **geometry_mask_kwargs,
@@ -357,7 +349,6 @@ def geometry_clip(
             chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
             meta=np.array([], dtype=bool),
             **geometry_mask_kwargs,
-            affine=affine,
         )
         mask = mask.any(axis=0)
 
