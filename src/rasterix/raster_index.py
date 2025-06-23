@@ -20,8 +20,33 @@ from rasterix.rioxarray_compat import guess_dims
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
+__all__ = ["assign_index", "RasterIndex"]
+
 
 def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None) -> T_Xarray:
+    """Assign a RasterIndex to an Xarray DataArray or Dataset.
+
+    Parameters
+    ----------
+    obj : xarray.DataArray or xarray.Dataset
+        The object to assign the index to. Must have a rio accessor with a transform.
+    x_dim : str, optional
+        Name of the x dimension. If None, will be automatically detected.
+    y_dim : str, optional
+        Name of the y dimension. If None, will be automatically detected.
+
+    Returns
+    -------
+    xarray.DataArray or xarray.Dataset
+        The input object with RasterIndex coordinates assigned.
+
+    Examples
+    --------
+    >>> import xarray as xr
+    >>> import rioxarray  # Required for rio accessor
+    >>> da = xr.open_dataset("path/to/raster.tif", engine="rasterio")
+    >>> indexed_da = assign_index(da)
+    """
     import rioxarray  # noqa
 
     if x_dim is None or y_dim is None:
@@ -302,21 +327,55 @@ def _filter_dim_indexers(index: WrappedIndex, indexers: Mapping) -> Mapping:
 
 
 class RasterIndex(Index):
-    """Xarray index for raster coordinates.
+    """Xarray index for raster coordinate indexing and spatial operations.
 
-    RasterIndex is itself a wrapper around one or more Xarray indexes associated
-    with either the raster x or y axis coordinate or both, depending on the
-    affine transformation and prior data selection (if any):
+    RasterIndex provides spatial indexing capabilities for raster data by wrapping
+    one or more Xarray indexes that handle coordinate transformations. It supports
+    both rectilinear and non-rectilinear (rotated/skewed) raster grids.
 
-    - The affine transformation is not rectilinear or has rotation: this index
-      encapsulates a single :py:class:`xarray.indexes.CoordinateTransformIndex` object
-      for both the x and y axis (2-dimensional) coordinates.
+    The internal structure depends on the affine transformation:
 
-    - The affine transformation is rectilinear ands has no rotation: this index
-      encapsulates one or two index objects for either the x or y axis or both
-      (1-dimensional) coordinates. The index type is either a subclass of
-      :py:class:`xarray.indexes.CoordinateTransformIndex` that supports slicing or
-      :py:class:`xarray.indexes.PandasIndex` (e.g., after data selection at arbitrary locations).
+    - **Non-rectilinear or rotated grids**: Uses a single 2D CoordinateTransformIndex
+      for coupled x/y coordinates that handles rotation and skew.
+
+    - **Rectilinear grids**: Uses separate 1D indexes for independent x/y axes,
+      enabling more efficient slicing operations.
+
+    Parameters
+    ----------
+    indexes : Mapping[WrappedIndexCoords, WrappedIndex]
+        Dictionary mapping coordinate names to their corresponding index objects.
+        Keys are either single coordinate names or tuples for coupled coordinates.
+
+    Attributes
+    ----------
+    bbox : BoundingBox
+        Spatial bounding box of the raster index.
+
+    Methods
+    -------
+    from_transform
+        Create RasterIndex from affine transform and dimensions.
+    transform
+        Get affine transform for pixel top-left corners.
+    center_transform
+        Get affine transform for pixel centers.
+
+    Examples
+    --------
+    Create a RasterIndex from an affine transform:
+
+    >>> from affine import Affine
+    >>> transform = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 100.0)
+    >>> index = RasterIndex.from_transform(transform, width=100, height=100)
+    >>> print(index.bbox)
+    BoundingBox(left=0.0, bottom=0.0, right=100.0, top=100.0)
+
+    Notes
+    -----
+    For rectilinear grids without rotation, RasterIndex creates separate 1D indexes
+    for x and y coordinates, which enables efficient slicing operations. For grids
+    with rotation or skew, it uses a coupled 2D transform.
     """
 
     _wrapped_indexes: dict[WrappedIndexCoords, WrappedIndex]
@@ -350,11 +409,40 @@ class RasterIndex(Index):
     def from_transform(
         cls, affine: Affine, width: int, height: int, x_dim: str = "x", y_dim: str = "y"
     ) -> RasterIndex:
-        """Create a RasterIndex from an AffineTransform and dimension sizes.
+        """Create a RasterIndex from an affine transform and raster dimensions.
+
+        Parameters
+        ----------
+        affine : affine.Affine
+            Affine transformation matrix defining the mapping from pixel coordinates
+            to spatial coordinates. Should represent pixel top-left corners.
+        width : int
+            Number of pixels in the x direction.
+        height : int
+            Number of pixels in the y direction.
+        x_dim : str, default "x"
+            Name for the x dimension.
+        y_dim : str, default "y"
+            Name for the y dimension.
 
         Returns
         -------
         RasterIndex
+            A new RasterIndex object with appropriate internal structure.
+
+        Notes
+        -----
+        For rectilinear transforms (no rotation/skew), separate AxisAffineTransformIndex
+        objects are created for x and y coordinates. For non-rectilinear transforms,
+        a single coupled CoordinateTransformIndex is used.
+
+        Examples
+        --------
+        Create a simple rectilinear index:
+
+        >>> from affine import Affine
+        >>> transform = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 100.0)
+        >>> index = RasterIndex.from_transform(transform, width=100, height=100)
         """
         indexes: dict[WrappedIndexCoords, AxisAffineTransformIndex | CoordinateTransformIndex]
 

@@ -16,6 +16,8 @@ raster_index/combining
 caption: Rasterizing
 hidden:
 ---
+rasterize/rasterio
+rasterize/exactextract
 ```
 
 ```{toctree}
@@ -23,5 +25,5 @@ hidden:
 caption: Reference
 hidden:
 ---
-api.rst
+autoapi/rasterix/index
 ```

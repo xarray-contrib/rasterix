@@ -21,6 +21,8 @@ F = TypeVar("F", bound=Callable[..., Any])
 if TYPE_CHECKING:
     import dask_geopandas
 
+__all__ = ["geometry_mask", "rasterize"]
+
 
 def with_rio_env(func: F) -> F:
     """
@@ -135,13 +137,17 @@ def rasterize(
     geoms_rechunk_size: int | None = None
         Size to rechunk the geometry array to *after* conversion from dataframe.
     env: rasterio.Env
-        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX`
+        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX``
         by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
 
     Returns
     -------
     DataArray
         2D DataArray with geometries "burned in"
+
+    See Also
+    --------
+    rasterio.features.rasterize
     """
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
@@ -299,6 +305,10 @@ def geometry_clip(
     -------
     DataArray
         3D dataarray with coverage fraction. The additional dimension is "geometry".
+
+    See Also
+    --------
+    rasterio.features.geometry_mask
     """
     invert = not invert  # rioxarray clip convention -> rasterio geometry_mask convention
     if xdim not in obj.dims or ydim not in obj.dims:

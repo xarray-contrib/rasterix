@@ -24,10 +24,10 @@ def get_affine(obj: xr.Dataset | xr.DataArray, *, xdim="x", ydim="y") -> Affine:
     else:
         x = obj.coords[xdim]
         y = obj.coords[ydim]
-        dx = x[1] - x[0]
-        dy = y[1] - y[0]
+        dx = (x[1] - x[0]).item()
+        dy = (y[1] - y[0]).item()
         return Affine.translation(
-            x[0] - dx / 2, (y[0] - dy / 2) if dy > 0 else (y[-1] + dy / 2)
+            x[0].item() - dx / 2, (y[0] if dy < 0 else y[-1]).item() - dy / 2
         ) * Affine.scale(dx, dy)
 
 

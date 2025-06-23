@@ -25,9 +25,7 @@ DEFAULT_STRATEGY = "feature-sequential"
 Strategy = Literal["feature-sequential", "raster-sequential", "raster-parallel"]
 CoverageWeights = Literal["area_spherical_m2", "area_cartesian", "area_spherical_km2", "fraction", "none"]
 
-__all__ = [
-    "coverage",
-]
+__all__ = ["coverage"]
 
 
 def xy_to_raster_source(x: np.ndarray, y: np.ndarray, *, srs_wkt: str | None) -> NumPyRasterSource:
@@ -74,11 +72,6 @@ def np_coverage(
     strategy: Strategy = DEFAULT_STRATEGY,
     coverage_weight: CoverageWeights = "fraction",
 ) -> np.ndarray[Any, Any]:
-    """
-    Parameters
-    ----------
-
-    """
     dtype = get_dtype(coverage_weight, geometries)
 
     if len(geometries.columns) > 1:
@@ -179,26 +172,73 @@ def coverage(
     strategy: Strategy = "feature-sequential",
     coverage_weight: CoverageWeights = "fraction",
 ) -> xr.DataArray:
-    """
-    Returns "coverage" fractions for each pixel for each geometry calculated using exactextract.
+    """Calculate pixel coverage fractions for geometries using exactextract.
+
+    This function computes how much of each raster pixel is covered by each geometry,
+    returning precise fractional coverage values or area measurements. It supports
+    both in-memory and dask-based computation for large datasets.
 
     Parameters
     ----------
-    obj : xr.DataArray | xr.Dataset
-        Xarray object used to extract the grid
-    geometries: GeoDataFrame | DaskGeoDataFrame
-        Geometries used for to calculate coverage
-    xdim: str
-        Name of the "x" dimension on ``obj``.
-    ydim: str
-        Name of the "y" dimension on ``obj``.
-    coverage_weight: {"fraction", "none", "area_cartesian", "area_spherical_m2", "area_spherical_km2"}
-        Weights to estimate, passed directly to exactextract.
+    obj : xarray.DataArray or xarray.Dataset
+        Xarray object defining the raster grid. Must contain a 'spatial_ref'
+        coordinate variable with CRS information.
+    geometries : geopandas.GeoDataFrame or dask_geopandas.GeoDataFrame
+        Vector geometries for which to calculate coverage. CRS should match
+        the raster object (though this is not currently enforced).
+    xdim : str, default "x"
+        Name of the x (longitude/easting) dimension in the raster object.
+    ydim : str, default "y"
+        Name of the y (latitude/northing) dimension in the raster object.
+    strategy : {"feature-sequential", "raster-sequential", "raster-parallel"}, default "feature-sequential"
+        Processing strategy passed to exactextract. Controls how computation
+        is parallelized and memory is managed.
+    coverage_weight : {"fraction", "none", "area_cartesian", "area_spherical_m2", "area_spherical_km2"}, default "fraction"
+        Type of coverage measurement to compute:
+
+        - "fraction": Fractional coverage (0-1)
+        - "none": Binary coverage (0 or 1)
+        - "area_cartesian": Area in map units squared
+        - "area_spherical_m2": Spherical area in square meters
+        - "area_spherical_km2": Spherical area in square kilometers
 
     Returns
     -------
-    DataArray
-        3D dataarray with coverage fraction. The additional dimension is "geometry".
+    xarray.DataArray
+        3D DataArray with dimensions (geometry, y, x) containing coverage values.
+        Data type depends on coverage_weight: uint8 for "none", float64 otherwise.
+        Includes appropriate units and long_name attributes for area measurements.
+
+    Raises
+    ------
+    ValueError
+        If the raster object lacks a 'spatial_ref' coordinate or if exactextract
+        encounters chunks of size 1 (not supported by exactextract).
+
+    See Also
+    --------
+    exactextract.exact_extract : Underlying exactextract function used for coverage calculation
+
+    Examples
+    --------
+    Calculate fractional coverage:
+
+    >>> import rasterix.rasterize.exact as exact
+    >>> import xarray as xr
+    >>> import geopandas as gpd
+    >>> # Load raster data with CRS info
+    >>> raster = xr.open_dataarray("data.tif")
+    >>> # Load vector geometries
+    >>> geometries = gpd.read_file("polygons.shp")
+    >>> # Calculate coverage fractions
+    >>> coverage = exact.coverage(raster, geometries)
+    >>> print(coverage.dims)  # ('geometry', 'y', 'x')
+
+    Calculate area in square meters:
+
+    >>> area_coverage = exact.coverage(raster, geometries, coverage_weight="area_spherical_m2")
+    >>> print(area_coverage.units)  # 'm2'
+
     """
     if "spatial_ref" not in obj.coords:
         raise ValueError("Xarray object must contain the `spatial_ref` variable.")
