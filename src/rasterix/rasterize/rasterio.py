@@ -42,13 +42,8 @@ def with_rio_env(func: F) -> F:
 
         if clear_cache:
             with rio.Env(GDAL_CACHEMAX=0):
-                try:
-                    from osgeo import gdal
-
-                    # attempt to force-clear the GDAL cache
-                    assert gdal.GetCacheMax() == 0
-                except ImportError:
-                    pass
+                # attempt to force-clear the GDAL cache
+                pass
 
         return result
 
