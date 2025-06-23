@@ -35,17 +35,12 @@ dynamic=["version"]
 
 [project.optional-dependencies]
 dask = ["dask-geopandas"]
-rasterize = [
-    "odc-geo",
-    "rasterio",
-    "rioxarray",
-]
+rasterize = ["rasterio"]
 exactextract = ["exactextract", "sparse"]
 test = [
   "geodatasets",
   "pooch",
   "dask-geopandas",
-  "odc-geo",
   "rasterio",
   "rioxarray",
   "exactextract",
