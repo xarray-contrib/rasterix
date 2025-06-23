@@ -152,7 +152,7 @@ def rasterize(
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
 
     rasterize_kwargs = dict(
-        all_touched=all_touched, merge_alg=merge_alg, affine=get_affine(obj, xdim=xdim, ydim=ydim)
+        all_touched=all_touched, merge_alg=merge_alg, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
     )
     # FIXME: box.crs == geometries.crs
     if is_in_memory(obj=obj, geometries=geometries):
@@ -163,7 +163,6 @@ def rasterize(
             offset=0,
             dtype=np.min_scalar_type(len(geometries)),
             fill=len(geometries),
-            env=env,
             **rasterize_kwargs,
         )
     else:
@@ -310,7 +309,7 @@ def geometry_clip(
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
     geometry_mask_kwargs = dict(
-        all_touched=all_touched, invert=invert, affine=get_affine(obj, xdim=xdim, ydim=ydim)
+        all_touched=all_touched, invert=invert, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
     )
 
     if is_in_memory(obj=obj, geometries=geometries):
@@ -318,7 +317,6 @@ def geometry_clip(
         mask = np_geometry_mask(
             geom_array.tolist(),
             shape=(obj.sizes[ydim], obj.sizes[xdim]),
-            env=env,
             **geometry_mask_kwargs,
         )
     else:
