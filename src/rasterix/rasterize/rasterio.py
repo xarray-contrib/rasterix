@@ -14,15 +14,12 @@ from affine import Affine
 from rasterio.features import MergeAlg, geometry_mask
 from rasterio.features import rasterize as rasterize_rio
 
-from .utils import get_affine, is_in_memory, prepare_for_dask
+from .utils import XAXIS, YAXIS, get_affine, is_in_memory, prepare_for_dask
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 if TYPE_CHECKING:
     import dask_geopandas
-
-YAXIS = 0
-XAXIS = 1
 
 
 def with_rio_env(func: F) -> F:
@@ -172,14 +169,13 @@ def rasterize(
     else:
         from dask.array import from_array, map_blocks
 
-        chunks, geom_array = prepare_for_dask(
-            obj, geometries, xdim=xdim, ydim=ydim, geoms_rechunk_size=geoms_rechunk_size
+        map_blocks_args, chunks, geom_array = prepare_for_dask(
+            obj,
+            geometries,
+            xdim=xdim,
+            ydim=ydim,
+            geoms_rechunk_size=geoms_rechunk_size,
         )
-        x_sizes = from_array(chunks[XAXIS], chunks=1)
-        y_sizes = from_array(chunks[YAXIS], chunks=1)
-        y_offsets = from_array(np.cumulative_sum(chunks[YAXIS][:-1], include_initial=True), chunks=1)
-        x_offsets = from_array(np.cumulative_sum(chunks[XAXIS][:-1], include_initial=True), chunks=1)
-
         # DaskGeoDataFrame.len() computes!
         num_geoms = geom_array.size
         # with dask, we use 0 as a fill value and replace it later
@@ -190,11 +186,7 @@ def rasterize(
 
         rasterized = map_blocks(
             dask_rasterize_wrapper,
-            geom_array[:, np.newaxis, np.newaxis],
-            x_offsets[np.newaxis, np.newaxis, :],
-            y_offsets[np.newaxis, :, np.newaxis],
-            x_sizes[np.newaxis, np.newaxis, :],
-            y_sizes[np.newaxis, :, np.newaxis],
+            *map_blocks_args,
             offsets[:, np.newaxis, np.newaxis],
             chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
             meta=np.array([], dtype=dtype),
@@ -330,22 +322,18 @@ def geometry_clip(
             **geometry_mask_kwargs,
         )
     else:
-        from dask.array import from_array, map_blocks
+        from dask.array import map_blocks
 
-        chunks, geom_array = prepare_for_dask(
-            obj, geometries, xdim=xdim, ydim=ydim, geoms_rechunk_size=geoms_rechunk_size
+        map_blocks_args, chunks, geom_array = prepare_for_dask(
+            obj,
+            geometries,
+            xdim=xdim,
+            ydim=ydim,
+            geoms_rechunk_size=geoms_rechunk_size,
         )
-        x_sizes = from_array(chunks[XAXIS], chunks=1)
-        y_sizes = from_array(chunks[YAXIS], chunks=1)
-        y_offsets = from_array(np.cumulative_sum(chunks[YAXIS][:-1], include_initial=True), chunks=1)
-        x_offsets = from_array(np.cumulative_sum(chunks[XAXIS][:-1], include_initial=True), chunks=1)
         mask = map_blocks(
             dask_mask_wrapper,
-            geom_array[:, np.newaxis, np.newaxis],
-            x_offsets[np.newaxis, np.newaxis, :],
-            y_offsets[np.newaxis, :, np.newaxis],
-            x_sizes[np.newaxis, np.newaxis, :],
-            y_sizes[np.newaxis, :, np.newaxis],
+            *map_blocks_args,
             chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
             meta=np.array([], dtype=bool),
             **geometry_mask_kwargs,

@@ -13,6 +13,10 @@ if TYPE_CHECKING:
     import dask_geopandas
 
 
+YAXIS = 0
+XAXIS = 1
+
+
 def get_affine(obj: xr.Dataset | xr.DataArray, *, xdim="x", ydim="y") -> Affine:
     spatial_ref = obj.coords["spatial_ref"]
     if "GeoTransform" in spatial_ref.attrs:
@@ -62,6 +66,8 @@ def prepare_for_dask(
     ydim: str,
     geoms_rechunk_size: int | None,
 ):
+    from dask.array import from_array
+
     chunks = (
         obj.chunksizes.get(ydim, obj.sizes[ydim]),
         obj.chunksizes.get(xdim, obj.sizes[ydim]),
@@ -69,4 +75,17 @@ def prepare_for_dask(
     geom_array = geometries_as_dask_array(geometries)
     if geoms_rechunk_size is not None:
         geom_array = geom_array.rechunk({0: geoms_rechunk_size})
-    return chunks, geom_array
+
+    x_sizes = from_array(chunks[XAXIS], chunks=1)
+    y_sizes = from_array(chunks[YAXIS], chunks=1)
+    y_offsets = from_array(np.cumulative_sum(chunks[YAXIS][:-1], include_initial=True), chunks=1)
+    x_offsets = from_array(np.cumulative_sum(chunks[XAXIS][:-1], include_initial=True), chunks=1)
+
+    map_blocks_args = (
+        geom_array[:, np.newaxis, np.newaxis],
+        x_offsets[np.newaxis, np.newaxis, :],
+        y_offsets[np.newaxis, :, np.newaxis],
+        x_sizes[np.newaxis, np.newaxis, :],
+        y_sizes[np.newaxis, :, np.newaxis],
+    )
+    return map_blocks_args, chunks, geom_array
