@@ -17,6 +17,7 @@ caption: Rasterizing
 hidden:
 ---
 rasterize/rasterio
+rasterize/geometry_mask
 rasterize/exactextract
 ```
 
