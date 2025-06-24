@@ -9,11 +9,13 @@ from rasterix.rasterize.rasterio import rasterize
 
 
 def test_rasterize():
+    snapshot = xr.load_dataarray("./rasterize_snapshot.nc")
     ds = xr.tutorial.open_dataset("eraint_uvz")
     ds = ds.rio.write_crs("epsg:4326")
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
 
     rasterized = rasterize(ds, world[["geometry"]], xdim="longitude", ydim="latitude")
+    xr.testing.assert_identical(rasterized, snapshot)
 
     chunked = ds.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
