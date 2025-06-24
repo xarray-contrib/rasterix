@@ -14,7 +14,7 @@ from affine import Affine
 from rasterio.features import MergeAlg, geometry_mask
 from rasterio.features import rasterize as rasterize_rio
 
-from .utils import XAXIS, YAXIS, get_affine, is_in_memory, prepare_for_dask
+from .utils import XAXIS, YAXIS, clip_to_bbox, get_affine, is_in_memory, prepare_for_dask
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -114,6 +114,7 @@ def rasterize(
     merge_alg: MergeAlg = MergeAlg.replace,
     geoms_rechunk_size: int | None = None,
     env: rio.Env | None = None,
+    clip: bool = False,
 ) -> xr.DataArray:
     """
     Dask-aware wrapper around ``rasterio.features.rasterize``.
@@ -139,6 +140,9 @@ def rasterize(
     env: rasterio.Env
         Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX``
         by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
+    clip: bool
+       If True, clip raster to the bounding box of the geometries.
+       Ignored for dask-geopandas geometries.
 
     Returns
     -------
@@ -152,10 +156,14 @@ def rasterize(
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
 
+    if clip:
+        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
+
     rasterize_kwargs = dict(
         all_touched=all_touched, merge_alg=merge_alg, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
     )
     # FIXME: box.crs == geometries.crs
+
     if is_in_memory(obj=obj, geometries=geometries):
         geom_array = geometries.to_numpy().squeeze(axis=1)
         rasterized = rasterize_geometries(
@@ -254,8 +262,6 @@ def dask_mask_wrapper(
 def np_geometry_mask(
     geometries: Sequence[Any],
     *,
-    x_offset: int,
-    y_offset: int,
     shape: tuple[int, int],
     affine: Affine,
     env: rio.Env | None = None,
@@ -277,6 +283,7 @@ def geometry_clip(
     invert: bool = False,
     geoms_rechunk_size: int | None = None,
     env: rio.Env | None = None,
+    clip: bool = True,
 ) -> xr.DataArray:
     """
     Dask-ified version of rioxarray.clip
@@ -298,8 +305,11 @@ def geometry_clip(
     geoms_rechunk_size: int | None = None,
         Chunksize for geometry dimension of the output.
     env: rasterio.Env
-        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX`
+        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX``
         by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
+    clip: bool
+       If True, clip raster to the bounding box of the geometries.
+       Ignored for dask-geopandas geometries.
 
     Returns
     -------
@@ -313,6 +323,9 @@ def geometry_clip(
     invert = not invert  # rioxarray clip convention -> rasterio geometry_mask convention
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
+    if clip:
+        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
+
     geometry_mask_kwargs = dict(
         all_touched=all_touched, invert=invert, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
     )

@@ -10,7 +10,7 @@ import xarray as xr
 from exactextract import exact_extract
 from exactextract.raster import NumPyRasterSource
 
-from .utils import geometries_as_dask_array, is_in_memory
+from .utils import clip_to_bbox, geometries_as_dask_array, is_in_memory
 
 if TYPE_CHECKING:
     import dask.array
@@ -171,6 +171,7 @@ def coverage(
     ydim="y",
     strategy: Strategy = "feature-sequential",
     coverage_weight: CoverageWeights = "fraction",
+    clip: bool = False,
 ) -> xr.DataArray:
     """Calculate pixel coverage fractions for geometries using exactextract.
 
@@ -201,6 +202,9 @@ def coverage(
         - "area_cartesian": Area in map units squared
         - "area_spherical_m2": Spherical area in square meters
         - "area_spherical_km2": Spherical area in square kilometers
+    clip: bool
+       If True, clip raster to the bounding box of the geometries.
+       Ignored for dask-geopandas geometries.
 
     Returns
     -------
@@ -242,7 +246,11 @@ def coverage(
     """
     if "spatial_ref" not in obj.coords:
         raise ValueError("Xarray object must contain the `spatial_ref` variable.")
+
     # FIXME: assert obj.crs == geometries.crs
+
+    if clip:
+        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
     if is_in_memory(obj=obj, geometries=geometries):
         out = np_coverage(
             x=obj[xdim].data,

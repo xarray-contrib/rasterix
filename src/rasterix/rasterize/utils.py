@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, overload
 
 import geopandas as gpd
 import numpy as np
@@ -15,6 +15,23 @@ if TYPE_CHECKING:
 
 YAXIS = 0
 XAXIS = 1
+
+
+@overload
+def clip_to_bbox(obj: xr.Dataset, geometries: gpd.GeoDataFrame) -> xr.Dataset: ...
+@overload
+def clip_to_bbox(obj: xr.DataArray, geometries: gpd.GeoDataFrame) -> xr.DataArray: ...
+def clip_to_bbox(
+    obj: xr.Dataset | xr.DataArray, geometries: gpd.GeoDataFrame, *, xdim: str, ydim: str
+) -> xr.Dataset | xr.DataArray:
+    bbox = geometries.total_bounds
+    if not hasattr(bbox, "chunks"):
+        y = obj[ydim].data
+        if y[0] < y[-1]:
+            obj = obj.sel({xdim: slice(bbox[0], bbox[2]), ydim: slice(bbox[1], bbox[3])})
+        else:
+            obj = obj.sel({xdim: slice(bbox[0], bbox[2]), ydim: slice(bbox[3], bbox[1])})
+    return obj
 
 
 def get_affine(obj: xr.Dataset | xr.DataArray, *, xdim="x", ydim="y") -> Affine:
