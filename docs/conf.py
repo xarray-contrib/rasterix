@@ -28,19 +28,31 @@ sys.path.insert(0, parent)
 
 # -- General configuration -----------------------------------------------------
 extensions = [
-    "sphinx.ext.autodoc",
     "sphinx.ext.viewcode",
-    "sphinx.ext.autosummary",
     "sphinx.ext.intersphinx",
     "sphinx.ext.extlinks",
     "numpydoc",
     "sphinx.ext.napoleon",
     "myst_nb",
+    "autoapi.extension",
     "sphinx_codeautolink",
     "sphinx_remove_toctrees",
     "sphinxext.opengraph",
 ]
 
+autoapi_dirs = ["../src/rasterix/"]
+autoapi_options = [
+    "members",
+    "undoc-members",
+    "show-inheritance",
+    # "show-module-summary",
+    "special-members",
+    # "imported-members",
+]
+autoapi_ignore = ["*compat*", "*util*"]
+autoapi_add_toctree_entry = False
+
+autodoc_typehints = "none"
 codeautolink_concat_default = True
 
 extlinks = {
@@ -127,10 +139,11 @@ intersphinx_mapping = {
     "xarray": ("https://docs.xarray.dev/en/stable/", None),
     "xproj": ("https://xproj.readthedocs.io/en/stable/", None),
     "pyproj": ("https://pyproj4.github.io/pyproj/stable/", None),
+    "exactextract": ("https://isciences.github.io/exactextract/", None),
+    "rasterio": ("https://rasterio.readthedocs.io/en/stable/", None),
 }
 
 autosummary_generate = True
-autodoc_typehints = "none"
 
 # Napoleon configurations
 napoleon_google_docstring = False

@@ -11,15 +11,18 @@ import numpy as np
 import rasterio as rio
 import xarray as xr
 from affine import Affine
-from rasterio.features import MergeAlg, geometry_mask
+from rasterio.features import MergeAlg
+from rasterio.features import geometry_mask as geometry_mask_rio
 from rasterio.features import rasterize as rasterize_rio
 
-from .utils import XAXIS, YAXIS, get_affine, is_in_memory, prepare_for_dask
+from .utils import XAXIS, YAXIS, clip_to_bbox, get_affine, is_in_memory, prepare_for_dask
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 if TYPE_CHECKING:
     import dask_geopandas
+
+__all__ = ["geometry_mask", "rasterize", "geometry_clip"]
 
 
 def with_rio_env(func: F) -> F:
@@ -112,6 +115,7 @@ def rasterize(
     merge_alg: MergeAlg = MergeAlg.replace,
     geoms_rechunk_size: int | None = None,
     env: rio.Env | None = None,
+    clip: bool = False,
 ) -> xr.DataArray:
     """
     Dask-aware wrapper around ``rasterio.features.rasterize``.
@@ -135,21 +139,32 @@ def rasterize(
     geoms_rechunk_size: int | None = None
         Size to rechunk the geometry array to *after* conversion from dataframe.
     env: rasterio.Env
-        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX`
+        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX``
         by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
+    clip: bool
+       If True, clip raster to the bounding box of the geometries.
+       Ignored for dask-geopandas geometries.
 
     Returns
     -------
     DataArray
         2D DataArray with geometries "burned in"
+
+    See Also
+    --------
+    rasterio.features.rasterize
     """
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
+
+    if clip:
+        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
     rasterize_kwargs = dict(
         all_touched=all_touched, merge_alg=merge_alg, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
     )
     # FIXME: box.crs == geometries.crs
+
     if is_in_memory(obj=obj, geometries=geometries):
         geom_array = geometries.to_numpy().squeeze(axis=1)
         rasterized = rasterize_geometries(
@@ -231,34 +246,130 @@ def dask_mask_wrapper(
     y_sizes: np.ndarray,
     *,
     affine: Affine,
-    all_touched: bool,
-    invert: bool,
-    env: rio.Env | None = None,
+    **kwargs,
 ) -> np.ndarray[Any, np.dtype[np.bool_]]:
-    return np_geometry_mask(
+    res = np_geometry_mask(
         geom_array[:, 0, 0].tolist(),
         shape=(y_sizes.item(), x_sizes.item()),
         affine=affine * affine.translation(x_offsets.item(), y_offsets.item()),
-        invert=invert,
-        env=env,
-    )[np.newaxis, :, :]
+        **kwargs,
+    )
+    return res[np.newaxis, :, :]
 
 
 @with_rio_env
 def np_geometry_mask(
     geometries: Sequence[Any],
     *,
-    x_offset: int,
-    y_offset: int,
     shape: tuple[int, int],
     affine: Affine,
     env: rio.Env | None = None,
     clear_cache: bool = False,
     **kwargs,
 ) -> np.ndarray[Any, np.dtype[np.bool_]]:
-    res = geometry_mask(geometries, out_shape=shape, transform=affine, **kwargs)
+    res = geometry_mask_rio(geometries, out_shape=shape, transform=affine, **kwargs)
     assert res.shape == shape
     return res
+
+
+def geometry_mask(
+    obj: xr.Dataset | xr.DataArray,
+    geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
+    *,
+    xdim="x",
+    ydim="y",
+    all_touched: bool = False,
+    invert: bool = False,
+    geoms_rechunk_size: int | None = None,
+    env: rio.Env | None = None,
+    clip: bool = False,
+) -> xr.DataArray:
+    """
+    Dask-ified version of ``rasterio.features.geometry_mask``
+
+    Parameters
+    ----------
+    obj : xr.DataArray | xr.Dataset
+        Xarray object used to extract the grid
+    geometries: GeoDataFrame | DaskGeoDataFrame
+        Geometries used for clipping
+    xdim: str
+        Name of the "x" dimension on ``obj``.
+    ydim: str
+        Name of the "y" dimension on ``obj``
+    all_touched: bool
+        Passed to rasterio
+    invert: bool
+        Whether to preserve values inside the geometry.
+    geoms_rechunk_size: int | None = None,
+        Chunksize for geometry dimension of the output.
+    env: rasterio.Env
+        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX``
+        by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
+    clip: bool
+       If True, clip raster to the bounding box of the geometries.
+       Ignored for dask-geopandas geometries.
+
+    Returns
+    -------
+    DataArray
+        3D dataarray with coverage fraction. The additional dimension is "geometry".
+
+    See Also
+    --------
+    rasterio.features.geometry_mask
+    """
+    if xdim not in obj.dims or ydim not in obj.dims:
+        raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
+    if clip:
+        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
+
+    geometry_mask_kwargs = dict(
+        all_touched=all_touched, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
+    )
+
+    if is_in_memory(obj=obj, geometries=geometries):
+        geom_array = geometries.to_numpy().squeeze(axis=1)
+        mask = np_geometry_mask(
+            geom_array.tolist(),
+            shape=(obj.sizes[ydim], obj.sizes[xdim]),
+            invert=invert,
+            **geometry_mask_kwargs,
+        )
+    else:
+        from dask.array import map_blocks
+
+        map_blocks_args, chunks, geom_array = prepare_for_dask(
+            obj,
+            geometries,
+            xdim=xdim,
+            ydim=ydim,
+            geoms_rechunk_size=geoms_rechunk_size,
+        )
+        mask = map_blocks(
+            dask_mask_wrapper,
+            *map_blocks_args,
+            chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
+            meta=np.array([], dtype=bool),
+            **geometry_mask_kwargs,
+        )
+        mask = mask.all(axis=0)
+        if invert:
+            mask = ~mask
+
+    return xr.DataArray(
+        dims=(ydim, xdim),
+        data=mask,
+        coords=xr.Coordinates(
+            coords={
+                xdim: obj.coords[xdim],
+                ydim: obj.coords[ydim],
+                "spatial_ref": obj.spatial_ref,
+            },
+            indexes={xdim: obj.xindexes[xdim], ydim: obj.xindexes[ydim]},
+        ),
+        name="mask",
+    )
 
 
 def geometry_clip(
@@ -271,6 +382,7 @@ def geometry_clip(
     invert: bool = False,
     geoms_rechunk_size: int | None = None,
     env: rio.Env | None = None,
+    clip: bool = True,
 ) -> xr.DataArray:
     """
     Dask-ified version of rioxarray.clip
@@ -292,57 +404,32 @@ def geometry_clip(
     geoms_rechunk_size: int | None = None,
         Chunksize for geometry dimension of the output.
     env: rasterio.Env
-        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX`
+        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX``
         by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
+    clip: bool
+       If True, clip raster to the bounding box of the geometries.
+       Ignored for dask-geopandas geometries.
 
     Returns
     -------
     DataArray
         3D dataarray with coverage fraction. The additional dimension is "geometry".
+
+    See Also
+    --------
+    rasterio.features.geometry_mask
     """
-    invert = not invert  # rioxarray clip convention -> rasterio geometry_mask convention
-    if xdim not in obj.dims or ydim not in obj.dims:
-        raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
-    geometry_mask_kwargs = dict(
-        all_touched=all_touched, invert=invert, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
+    if clip:
+        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
+    mask = geometry_mask(
+        obj,
+        geometries,
+        all_touched=all_touched,
+        invert=not invert,  # rioxarray clip convention -> rasterio geometry_mask convention
+        env=env,
+        xdim=xdim,
+        ydim=ydim,
+        geoms_rechunk_size=geoms_rechunk_size,
+        clip=False,
     )
-
-    if is_in_memory(obj=obj, geometries=geometries):
-        geom_array = geometries.to_numpy().squeeze(axis=1)
-        mask = np_geometry_mask(
-            geom_array.tolist(),
-            shape=(obj.sizes[ydim], obj.sizes[xdim]),
-            **geometry_mask_kwargs,
-        )
-    else:
-        from dask.array import map_blocks
-
-        map_blocks_args, chunks, geom_array = prepare_for_dask(
-            obj,
-            geometries,
-            xdim=xdim,
-            ydim=ydim,
-            geoms_rechunk_size=geoms_rechunk_size,
-        )
-        mask = map_blocks(
-            dask_mask_wrapper,
-            *map_blocks_args,
-            chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
-            meta=np.array([], dtype=bool),
-            **geometry_mask_kwargs,
-        )
-        mask = mask.any(axis=0)
-
-    mask_da = xr.DataArray(
-        dims=(ydim, xdim),
-        data=mask,
-        coords=xr.Coordinates(
-            coords={
-                xdim: obj.coords[xdim],
-                ydim: obj.coords[ydim],
-                "spatial_ref": obj.spatial_ref,
-            },
-            indexes={xdim: obj.xindexes[xdim], ydim: obj.xindexes[ydim]},
-        ),
-    )
-    return obj.where(mask_da)
+    return obj.where(mask)

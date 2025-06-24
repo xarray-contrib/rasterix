@@ -49,19 +49,26 @@ test = [
   "hypothesis",
 ]
 docs = [
-    'pyproj',
-    'rioxarray', # TODO: remove once assign_index doesn't need it.
-    # Doc building
-    'sphinx',
-    'sphinx-autobuild>=2021.3.14',
-    'sphinx-copybutton',
-    'sphinx-remove-toctrees',
-    'sphinx-codeautolink',
-    'myst-parser',
-    'myst-nb',
-    'furo',
-    'numpydoc',
-    'sphinxext-opengraph[social_cards]',
+  "geodatasets",
+  "pooch",
+  "dask-geopandas",
+  "rasterio",
+  "rioxarray",
+  "exactextract",
+  "sparse",
+  "netCDF4",
+  # Doc building
+  'sphinx',
+  'sphinx-autoapi',
+  'sphinx-autobuild>=2021.3.14',
+  'sphinx-copybutton',
+  'sphinx-remove-toctrees',
+  'sphinx-codeautolink',
+  'myst-parser',
+  'myst-nb',
+  'furo',
+  'numpydoc',
+  'sphinxext-opengraph[social_cards]',
 ]
 
 
