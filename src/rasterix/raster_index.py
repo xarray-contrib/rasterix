@@ -619,6 +619,13 @@ class RasterIndex(Index):
         return self._new_with_bbox(new_bbox)
 
     def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
+        if self._xy_indexes is not None:
+            x_dim = self._xy_indexes[0].axis_transform.dim
+            y_dim = self._xy_indexes[1].axis_transform.dim
+        else:
+            assert self._index is not None
+            x_dim, y_dim = cast(AffineTransform, self._index.transform).xy_dims
+
         affine = self.transform()
         ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
         inter = bbox_intersection([ours, theirs])
@@ -631,11 +638,11 @@ class RasterIndex(Index):
         tol: float = 0.01
 
         indexers = {}
-        indexers["x"] = get_indexer(
-            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other._shape["x"]
+        indexers[x_dim] = get_indexer(
+            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other._shape[x_dim]
         )
-        indexers["y"] = get_indexer(
-            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape["y"]
+        indexers[y_dim] = get_indexer(
+            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape[y_dim]
         )
         return indexers
 
