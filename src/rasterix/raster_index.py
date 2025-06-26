@@ -331,11 +331,9 @@ class RasterIndex(Index):
     - **Rectilinear grids**: Uses separate 1D indexes for independent x/y axes,
       enabling more efficient slicing operations.
 
-    Parameters
-    ----------
-    indexes : Mapping[WrappedIndexCoords, WrappedIndex]
-        Dictionary mapping coordinate names to their corresponding index objects.
-        Keys are either single coordinate names or tuples for coupled coordinates.
+    Do not use :py:meth:`~rasterix.RasterIndex.__init__` directly. Instead use
+    :py:meth:`~rasterix.RasterIndex.from_transform` or
+    :py:func:`~rasterix.assign_index`.
 
     Attributes
     ----------
