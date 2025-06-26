@@ -311,9 +311,7 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
         return pd.Index(values[self.dim])
 
 
-# The types of Xarray indexes that may be wrapped by RasterIndex
-WrappedIndex = AxisAffineTransformIndex | CoordinateTransformIndex
-WrappedIndexCoords = Hashable | tuple[Hashable, Hashable]
+WrappedIndex = tuple[AxisAffineTransformIndex, AxisAffineTransformIndex] | CoordinateTransformIndex
 
 
 class RasterIndex(Index):
@@ -364,36 +362,45 @@ class RasterIndex(Index):
     For rectilinear grids without rotation, RasterIndex creates separate 1D indexes
     for x and y coordinates, which enables efficient slicing operations. For grids
     with rotation or skew, it uses a coupled 2D transform.
+
     """
 
-    _wrapped_indexes: dict[WrappedIndexCoords, WrappedIndex]
-    _axis_dependent: bool
+    _index: CoordinateTransformIndex | None
+    _xy_indexes: tuple[AxisAffineTransformIndex, AxisAffineTransformIndex] | None
     _shape: dict[str, int]
 
-    def __init__(self, indexes: Mapping[WrappedIndexCoords, WrappedIndex]):
-        idx_keys = list(indexes)
-        idx_vals = list(indexes.values())
+    def __init__(self, index: WrappedIndex):
+        if isinstance(index, CoordinateTransformIndex) and isinstance(index.transform, AffineTransform):
+            self._index = index
+            self._xy_indexes = None
+        elif (
+            isinstance(index, tuple)
+            and len(index) == 2
+            and isinstance(index[0], AxisAffineTransformIndex)
+            and isinstance(index[1], AxisAffineTransformIndex)
+        ):
+            self._index = None
+            self._xy_indexes = index
+        else:
+            raise ValueError("invalid index")
 
-        # either one or the other configuration (dependent vs. independent x/y axes)
-        axis_dependent = (
-            len(indexes) == 1
-            and isinstance(idx_keys[0], tuple)
-            and isinstance(idx_vals[0], CoordinateTransformIndex)
-        )
-        axis_independent = len(indexes) == 2 and all(
-            isinstance(idx, AxisAffineTransformIndex) for idx in idx_vals
-        )
-        assert axis_dependent ^ axis_independent
-        self._axis_dependent = axis_dependent
-
-        self._wrapped_indexes = dict(indexes)
-        if axis_independent:
+        if self._xy_indexes is not None:
             self._shape = {
-                "x": self._wrapped_indexes["x"].axis_transform.size,
-                "y": self._wrapped_indexes["y"].axis_transform.size,
+                "x": self._xy_indexes[0].axis_transform.size,
+                "y": self._xy_indexes[1].axis_transform.size,
             }
         else:
-            self._shape = next(iter(self._wrapped_indexes.values())).dim_size
+            assert self._index is not None
+            self._shape = self._index.transform.dim_size
+
+    @property
+    def _wrapped_indexes(self) -> tuple[CoordinateTransformIndex | AxisAffineTransformIndex, ...]:
+        """Returns the wrapped index objects."""
+        if self._xy_indexes is not None:
+            return self._xy_indexes
+
+        assert self._index is not None
+        return (self._index,)
 
     @classmethod
     def from_transform(
@@ -434,7 +441,7 @@ class RasterIndex(Index):
         >>> transform = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 100.0)
         >>> index = RasterIndex.from_transform(transform, width=100, height=100)
         """
-        indexes: dict[WrappedIndexCoords, AxisAffineTransformIndex | CoordinateTransformIndex]
+        index: WrappedIndex
 
         # pixel centered coordinates
         affine = affine * Affine.translation(0.5, 0.5)
@@ -442,15 +449,15 @@ class RasterIndex(Index):
         if affine.is_rectilinear and affine.b == affine.d == 0:
             x_transform = AxisAffineTransform(affine, width, "x", x_dim, is_xaxis=True)
             y_transform = AxisAffineTransform(affine, height, "y", y_dim, is_xaxis=False)
-            indexes = {
-                "x": AxisAffineTransformIndex(x_transform),
-                "y": AxisAffineTransformIndex(y_transform),
-            }
+            index = (
+                AxisAffineTransformIndex(x_transform),
+                AxisAffineTransformIndex(y_transform),
+            )
         else:
             xy_transform = AffineTransform(affine, width, height, x_dim=x_dim, y_dim=y_dim)
-            indexes = {("x", "y"): CoordinateTransformIndex(xy_transform)}
+            index = CoordinateTransformIndex(xy_transform)
 
-        return cls(indexes)
+        return cls(index)
 
     @classmethod
     def from_variables(
@@ -465,77 +472,77 @@ class RasterIndex(Index):
     def create_variables(self, variables: Mapping[Any, Variable] | None = None) -> dict[Hashable, Variable]:
         new_variables: dict[Hashable, Variable] = {}
 
-        for index in self._wrapped_indexes.values():
+        for index in self._wrapped_indexes:
             new_variables.update(index.create_variables())
 
         return new_variables
 
     def isel(self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]) -> RasterIndex | None:
-        if self._axis_dependent:
+        if self._index is not None:
             # preserve RasterIndex is not supported in the case of coupled x/y 2D coordinates
             return None
 
-        new_indexes: dict[WrappedIndexCoords, AxisAffineTransformIndex] = {}
+        assert self._xy_indexes is not None
 
-        for coord_names, index in self._wrapped_indexes.items():
-            index = cast(AxisAffineTransformIndex, index)
+        new_indexes = []
+
+        for index in self._xy_indexes:
             dim = index.axis_transform.dim
 
             if dim not in indexers:
                 # simply propagate the index
-                new_indexes[coord_names] = index
+                new_indexes.append(index)
             else:
                 new_index = index.isel({dim: indexers[dim]})
                 if new_index is not None:
-                    new_indexes[coord_names] = new_index
+                    new_indexes.append(new_index)
 
         # TODO: if/when supported in Xarray, return PandasIndex instances for either the
         # x or the y axis (or both) instead of returning None (drop the index)
         if len(new_indexes) == 2:
-            return RasterIndex(new_indexes)
+            return RasterIndex(tuple(new_indexes))
         else:
             return None
 
     def sel(self, labels: dict[Any, Any], method=None, tolerance=None) -> IndexSelResult:
-        results = []
+        if self._index is not None:
+            return self._index.sel(labels, method=method, tolerance=tolerance)
 
-        for coord_names, index in self._wrapped_indexes.items():
-            if not isinstance(coord_names, tuple):
-                coord_names = (coord_names,)
-            index_labels = {k: v for k, v in labels.items() if k in coord_names}
-            if index_labels:
-                results.append(index.sel(index_labels, method=method, tolerance=tolerance))
+        assert self._xy_indexes is not None
+
+        results: list[IndexSelResult] = []
+
+        for index in self._xy_indexes:
+            coord_name = index.axis_transform.coord_name
+            if coord_name in labels:
+                res = index.sel({coord_name: labels[coord_name]}, method=method, tolerance=tolerance)
+                results.append(res)
 
         return merge_sel_results(results)
 
     def equals(self, other: Index, *, exclude=None) -> bool:
         if exclude is None:
             exclude = {}
+
         if not isinstance(other, RasterIndex):
             return False
-        if set(self._wrapped_indexes) != set(other._wrapped_indexes):
+
+        if self._index is not None and other._index is not None:
+            return self._index.equals(other._index)
+        elif self._xy_indexes is not None and other._xy_indexes is not None:
+            return all(
+                idx.equals(other_idx)
+                for idx, other_idx in zip(self._xy_indexes, other._xy_indexes)
+                if idx.axis_transform.dim not in exclude
+            )
+        else:
             return False
-
-        return all(
-            index.equals(other._wrapped_indexes[k])  # type: ignore[arg-type]
-            for k, index in self._wrapped_indexes.items()
-            if k not in exclude
-        )
-
-    def to_pandas_index(self) -> pd.Index:
-        # conversion is possible only if this raster index encapsulates exactly
-        # one AxisAffineTransformIndex associated to either the x or y axis
-        # (1-dimensional) coordinate.
-        if not self._axis_dependent and len(self._wrapped_indexes) == 1:
-            index = next(iter(self._wrapped_indexes.values()))
-            return index.to_pandas_index()
-
-        raise ValueError("Cannot convert RasterIndex to pandas.Index")
 
     def __repr__(self):
         items: list[str] = []
 
-        for coord_names, index in self._wrapped_indexes.items():
+        for index in self._wrapped_indexes:
+            coord_names = index.transform.coord_names
             items += [repr(coord_names) + ":", textwrap.indent(repr(index), "    ")]
 
         return "RasterIndex\n" + "\n".join(items)
@@ -546,14 +553,14 @@ class RasterIndex(Index):
 
     def center_transform(self) -> Affine:
         """Affine transform for cell centers."""
-        if len(self._wrapped_indexes) > 1:
-            x = self._wrapped_indexes["x"].axis_transform.affine
-            y = self._wrapped_indexes["y"].axis_transform.affine
-            aff = Affine(x.a, x.b, x.c, y.d, y.e, y.f)
-        else:
-            index = next(iter(self._wrapped_indexes.values()))
-            aff = index.affine
-        return aff
+        if self._index is not None:
+            return cast(AffineTransform, self._index.transform).affine
+
+        assert self._xy_indexes is not None
+
+        x = self._xy_indexes[0].axis_transform.affine
+        y = self._xy_indexes[1].axis_transform.affine
+        return Affine(x.a, x.b, x.c, y.d, y.e, y.f)
 
     @property
     def bbox(self) -> BoundingBox:
@@ -564,7 +571,7 @@ class RasterIndex(Index):
         BoundingBox
         """
         return BoundingBox.from_transform(
-            shape=tuple(self._shape[k] for k in ("y", "x")),
+            shape=(self._shape["y"], self._shape["x"]),
             transform=self.transform(),
         )
 
@@ -574,7 +581,7 @@ class RasterIndex(Index):
         indexes: Sequence[Self],
         dim: Hashable,
         positions: Iterable[Iterable[int]] | None = None,
-    ) -> Self:
+    ) -> RasterIndex:
         if len(indexes) == 1:
             return next(iter(indexes))
 
@@ -586,7 +593,7 @@ class RasterIndex(Index):
         new_bbox = bbox_union(as_compatible_bboxes(*indexes, concat_dim=dim))
         return indexes[0]._new_with_bbox(new_bbox)
 
-    def _new_with_bbox(self, bbox: BoundingBox) -> Self:
+    def _new_with_bbox(self, bbox: BoundingBox) -> RasterIndex:
         affine = self.transform()
         new_affine, Nx, Ny = bbox_to_affine(bbox, rx=affine.a, ry=affine.e)
         # TODO: set xdim, ydim explicitly
@@ -595,7 +602,7 @@ class RasterIndex(Index):
         return new_index
 
     def join(self, other: RasterIndex, how) -> RasterIndex:
-        if set(self._wrapped_indexes.keys()) != set(other._wrapped_indexes.keys()):
+        if len(self._wrapped_indexes) != len(other._wrapped_indexes):
             # TODO: better error message
             raise ValueError(
                 "Alignment is only supported between RasterIndexes, when both contain compatible transforms."
@@ -649,7 +656,7 @@ def get_indexer(off, our_off, start, stop, spacing, tol, size) -> np.ndarray:
     return idxr
 
 
-def bbox_to_affine(bbox: BoundingBox, rx, ry) -> Affine:
+def bbox_to_affine(bbox: BoundingBox, rx, ry) -> tuple[Affine, int, int]:
     # Fraction of a pixel that can be ignored, defaults to 1/100. Bounding box of the output
     # geobox is allowed to be smaller than supplied bounding box by that amount.
     # FIXME: translate user-provided `tolerance` to `tol`
