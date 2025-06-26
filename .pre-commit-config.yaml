@@ -31,11 +31,11 @@ repos:
           - mdformat-black
           - mdformat-myst
 
-  # - repo: https://github.com/kynan/nbstripout
-  #   rev: 0.8.1
-  #   hooks:
-  #     - id: nbstripout
-  #       args: [--extra-keys=metadata.kernelspec metadata.language_info.version]
+  - repo: https://github.com/kynan/nbstripout
+    rev: 0.8.1
+    hooks:
+      - id: nbstripout
+        args: [--extra-keys=metadata.kernelspec metadata.language_info.version]
 
   - repo: https://github.com/codespell-project/codespell
     rev: v2.4.1

@@ -14,14 +14,13 @@ name = "rasterix"
 description = "Raster extensions for Xarray"
 license = "Apache-2.0"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 keywords = ["xarray"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -34,19 +33,15 @@ dependencies = [
     "xarray>=2025",
 ]
 dynamic=["version"]
+
 [project.optional-dependencies]
 dask = ["dask-geopandas"]
-rasterize = [
-    "odc-geo",
-    "rasterio",
-    "rioxarray",
-]
+rasterize = ["rasterio"]
 exactextract = ["exactextract", "sparse"]
 test = [
   "geodatasets",
   "pooch",
   "dask-geopandas",
-  "odc-geo",
   "rasterio",
   "rioxarray",
   "exactextract",
@@ -54,6 +49,29 @@ test = [
   "netCDF4",
   "hypothesis",
 ]
+docs = [
+  "geodatasets",
+  "pooch",
+  "dask-geopandas",
+  "rasterio",
+  "rioxarray",
+  "exactextract",
+  "sparse",
+  "netCDF4",
+  # Doc building
+  'sphinx',
+  'sphinx-autoapi',
+  'sphinx-autobuild>=2021.3.14',
+  'sphinx-copybutton',
+  'sphinx-remove-toctrees',
+  'sphinx-codeautolink',
+  'myst-parser',
+  'myst-nb',
+  'furo',
+  'numpydoc',
+  'sphinxext-opengraph[social_cards]',
+]
+
 
 [tool.hatch]
 version.source = "vcs"
@@ -80,7 +98,7 @@ dependencies = [
 features = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.10", "3.13"]
+python = ["3.11", "3.13"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
