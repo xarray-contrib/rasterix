@@ -382,7 +382,7 @@ class RasterIndex(Index):
             and isinstance(idx_keys[0], tuple)
             and isinstance(idx_vals[0], CoordinateTransformIndex)
         )
-        axis_independent = len(indexes) in (1, 2) and all(
+        axis_independent = len(indexes) == 2 and all(
             isinstance(idx, AxisAffineTransformIndex) for idx in idx_vals
         )
         assert axis_dependent ^ axis_independent
