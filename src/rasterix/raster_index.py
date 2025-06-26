@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import textwrap
 from collections.abc import Hashable, Iterable, Mapping, Sequence
-from typing import Any, Self, TypeVar
+from typing import Any, Self, TypeVar, cast
 
 import numpy as np
 import pandas as pd
@@ -12,7 +12,7 @@ from xarray import Coordinates, DataArray, Dataset, Index, Variable
 from xarray.core.coordinate_transform import CoordinateTransform
 
 # TODO: import from public API once it is available
-from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
+from xarray.core.indexes import CoordinateTransformIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
 
 from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, maybe_int, snap_grid
@@ -225,9 +225,6 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
     - Data slicing computes a new affine transform and returns a new
       `AxisAffineTransformIndex` object
 
-    - Otherwise data selection creates and returns a new Xarray
-      `PandasIndex` object for non-scalar indexers
-
     - The index can be converted to a `pandas.Index` object (useful for Xarray
       operations that don't work with Xarray indexes yet).
 
@@ -244,7 +241,7 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
 
     def isel(  # type: ignore[override]
         self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]
-    ) -> AxisAffineTransformIndex | PandasIndex | None:
+    ) -> AxisAffineTransformIndex | None:
         idxer = indexers[self.dim]
 
         # generate a new index with updated transform if a slice is given
@@ -256,14 +253,17 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
         # no index for scalar value
         elif np.ndim(idxer) == 0:
             return None
-        # otherwise return a PandasIndex with values computed by forward transformation
+        # otherwise drop the index
+        # (TODO: return a PandasIndex with values computed by forward transformation when it
+        #  will be possible to auto-convert RasterIndex to PandasIndex for x and/or y axis)
         else:
-            values = self.axis_transform.forward({self.dim: idxer})[self.axis_transform.coord_name]
-            if isinstance(idxer, Variable):
-                new_dim = idxer.dims[0]
-            else:
-                new_dim = self.dim
-            return PandasIndex(values, new_dim, coord_dtype=values.dtype)
+            return None
+            # values = self.axis_transform.forward({self.dim: idxer})[self.axis_transform.coord_name]
+            # if isinstance(idxer, Variable):
+            #     new_dim = idxer.dims[0]
+            # else:
+            #     new_dim = self.dim
+            # return PandasIndex(values, new_dim, coord_dtype=values.dtype)
 
     def sel(self, labels, method=None, tolerance=None):
         coord_name = self.axis_transform.coord_name
@@ -312,18 +312,8 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
 
 
 # The types of Xarray indexes that may be wrapped by RasterIndex
-WrappedIndex = AxisAffineTransformIndex | PandasIndex | CoordinateTransformIndex
+WrappedIndex = AxisAffineTransformIndex | CoordinateTransformIndex
 WrappedIndexCoords = Hashable | tuple[Hashable, Hashable]
-
-
-def _filter_dim_indexers(index: WrappedIndex, indexers: Mapping) -> Mapping:
-    if isinstance(index, CoordinateTransformIndex):
-        dims = index.transform.dims
-    else:
-        # PandasIndex
-        dims = (str(index.dim),)
-
-    return {dim: indexers[dim] for dim in dims if dim in indexers}
 
 
 class RasterIndex(Index):
@@ -379,6 +369,7 @@ class RasterIndex(Index):
     """
 
     _wrapped_indexes: dict[WrappedIndexCoords, WrappedIndex]
+    _axis_dependent: bool
     _shape: dict[str, int]
 
     def __init__(self, indexes: Mapping[WrappedIndexCoords, WrappedIndex]):
@@ -392,9 +383,10 @@ class RasterIndex(Index):
             and isinstance(idx_vals[0], CoordinateTransformIndex)
         )
         axis_independent = len(indexes) in (1, 2) and all(
-            isinstance(idx, AxisAffineTransformIndex | PandasIndex) for idx in idx_vals
+            isinstance(idx, AxisAffineTransformIndex) for idx in idx_vals
         )
         assert axis_dependent ^ axis_independent
+        self._axis_dependent = axis_dependent
 
         self._wrapped_indexes = dict(indexes)
         if axis_independent:
@@ -481,23 +473,27 @@ class RasterIndex(Index):
         return new_variables
 
     def isel(self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]) -> RasterIndex | None:
-        new_indexes: dict[WrappedIndexCoords, WrappedIndex] = {}
+        if self._axis_dependent:
+            # preserve RasterIndex is not supported in the case of coupled x/y 2D coordinates
+            return None
+
+        new_indexes: dict[WrappedIndexCoords, AxisAffineTransformIndex] = {}
 
         for coord_names, index in self._wrapped_indexes.items():
-            index_indexers = _filter_dim_indexers(index, indexers)
-            if not index_indexers:
-                # no selection to perform: simply propagate the index
-                # TODO: uncomment when https://github.com/pydata/xarray/issues/10063 is fixed
-                # new_indexes[coord_names] = index
-                ...
+            index = cast(AxisAffineTransformIndex, index)
+            dim = index.axis_transform.dim
+
+            if dim not in indexers:
+                # simply propagate the index
+                new_indexes[coord_names] = index
             else:
-                new_index = index.isel(index_indexers)
+                new_index = index.isel({dim: indexers[dim]})
                 if new_index is not None:
                     new_indexes[coord_names] = new_index
 
-        if new_indexes:
-            # TODO: if there's only a single PandasIndex can we just return it?
-            # (maybe better to keep it wrapped if we plan to later make RasterIndex CRS-aware)
+        # TODO: if/when supported in Xarray, return PandasIndex instances for either the
+        # x or the y axis (or both) instead of returning None (drop the index)
+        if len(new_indexes) == 2:
             return RasterIndex(new_indexes)
         else:
             return None
@@ -529,13 +525,12 @@ class RasterIndex(Index):
         )
 
     def to_pandas_index(self) -> pd.Index:
-        # conversion is possible only if this raster index encapsulates
-        # exactly one AxisAffineTransformIndex or a PandasIndex associated
-        # to either the x or y axis (1-dimensional) coordinate.
-        if len(self._wrapped_indexes) == 1:
+        # conversion is possible only if this raster index encapsulates exactly
+        # one AxisAffineTransformIndex associated to either the x or y axis
+        # (1-dimensional) coordinate.
+        if not self._axis_dependent and len(self._wrapped_indexes) == 1:
             index = next(iter(self._wrapped_indexes.values()))
-            if isinstance(index, AxisAffineTransformIndex | PandasIndex):
-                return index.to_pandas_index()
+            return index.to_pandas_index()
 
         raise ValueError("Cannot convert RasterIndex to pandas.Index")
 
