@@ -367,7 +367,7 @@ class RasterIndex(Index):
 
     _index: CoordinateTransformIndex | None
     _xy_indexes: tuple[AxisAffineTransformIndex, AxisAffineTransformIndex] | None
-    _shape: dict[str, int]
+    _shape: tuple[int, int]
 
     def __init__(self, index: WrappedIndex):
         if isinstance(index, CoordinateTransformIndex) and isinstance(index.transform, AffineTransform):
@@ -385,13 +385,12 @@ class RasterIndex(Index):
             raise ValueError("invalid index")
 
         if self._xy_indexes is not None:
-            self._shape = {
-                "x": self._xy_indexes[0].axis_transform.size,
-                "y": self._xy_indexes[1].axis_transform.size,
-            }
+            self._shape = (self._xy_indexes[0].axis_transform.size, self._xy_indexes[1].axis_transform.size)
         else:
             assert self._index is not None
-            self._shape = self._index.transform.dim_size
+            dims = cast(AffineTransform, self._index.transform).xy_dims
+            dim_size = self._index.transform.dim_size
+            self._shape = (dim_size[dims[0]], dim_size[dims[1]])
 
     @property
     def _wrapped_indexes(self) -> tuple[CoordinateTransformIndex | AxisAffineTransformIndex, ...]:
@@ -570,10 +569,7 @@ class RasterIndex(Index):
         -------
         BoundingBox
         """
-        return BoundingBox.from_transform(
-            shape=(self._shape["y"], self._shape["x"]),
-            transform=self.transform(),
-        )
+        return BoundingBox.from_transform(shape=(self._shape[1], self._shape[0]), transform=self.transform())
 
     @classmethod
     def concat(
@@ -639,10 +635,10 @@ class RasterIndex(Index):
 
         indexers = {}
         indexers[x_dim] = get_indexer(
-            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other._shape[x_dim]
+            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other._shape[0]
         )
         indexers[y_dim] = get_indexer(
-            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape[y_dim]
+            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape[1]
         )
         return indexers
 
@@ -682,10 +678,10 @@ def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> 
     _assert_transforms_are_compatible(*transforms)
 
     expected_off_x = (transforms[0].c,) + tuple(
-        t.c + i._shape["x"] * t.a for i, t in zip(indexes[:-1], transforms[:-1])
+        t.c + i._shape[0] * t.a for i, t in zip(indexes[:-1], transforms[:-1])
     )
     expected_off_y = (transforms[0].f,) + tuple(
-        t.f + i._shape["y"] * t.e for i, t in zip(indexes[:-1], transforms[:-1])
+        t.f + i._shape[1] * t.e for i, t in zip(indexes[:-1], transforms[:-1])
     )
 
     off_x = tuple(t.c for t in transforms)
