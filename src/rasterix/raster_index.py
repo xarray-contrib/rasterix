@@ -540,8 +540,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         affine = affine * Affine.translation(0.5, 0.5)
 
         if affine.is_rectilinear and affine.b == affine.d == 0:
-            x_transform = AxisAffineTransform(affine, width, "x", x_dim, is_xaxis=True)
-            y_transform = AxisAffineTransform(affine, height, "y", y_dim, is_xaxis=False)
+            x_transform = AxisAffineTransform(affine, width, x_dim, x_dim, is_xaxis=True)
+            y_transform = AxisAffineTransform(affine, height, y_dim, y_dim, is_xaxis=False)
             index = (
                 AxisAffineTransformIndex(x_transform),
                 AxisAffineTransformIndex(y_transform),
@@ -567,6 +567,18 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
 
         for index in self._wrapped_indexes:
             new_variables.update(index.create_variables())
+
+        if self.crs is not None:
+            xname, yname = self.xy_coord_names
+            xattrs, yattrs = self.crs.cs_to_cf()
+            if "axis" in xattrs and "axis" in yattrs:
+                # The axis order is defined by the projection
+                # So we have to figure which is which.
+                # This is an ugly hack that works for common cases.
+                if xattrs["axis"] == "Y":
+                    xattrs, yattrs = yattrs, xattrs
+                new_variables[xname].attrs = xattrs
+                new_variables[yname].attrs = yattrs
 
         return new_variables
 
