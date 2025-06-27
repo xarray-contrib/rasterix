@@ -23,6 +23,11 @@ T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 __all__ = ["assign_index", "RasterIndex"]
 
 
+# X/Y axis order conventions used for public and internal attributes
+XAXIS = 0
+YAXIS = 1
+
+
 def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None) -> T_Xarray:
     """Assign a RasterIndex to an Xarray DataArray or Dataset.
 
@@ -91,8 +96,8 @@ class AffineTransform(CoordinateTransform):
         self.affine = affine
 
         # array dimensions in reverse order (y = rows, x = cols)
-        self.xy_dims = self.dims[0], self.dims[1]
-        self.dims = self.dims[1], self.dims[0]
+        self.xy_dims = self.dims[XAXIS], self.dims[YAXIS]
+        self.dims = self.dims[YAXIS], self.dims[XAXIS]
 
     def forward(self, dim_positions):
         positions = tuple(dim_positions[dim] for dim in self.xy_dims)
@@ -367,30 +372,36 @@ class RasterIndex(Index):
 
     _index: CoordinateTransformIndex | None
     _xy_indexes: tuple[AxisAffineTransformIndex, AxisAffineTransformIndex] | None
-    _shape: tuple[int, int]
+    _xy_shape: tuple[int, int]
+    _xy_dims: tuple[str, str]
+    _xy_coord_names: tuple[Hashable, Hashable]
 
     def __init__(self, index: WrappedIndex):
         if isinstance(index, CoordinateTransformIndex) and isinstance(index.transform, AffineTransform):
             self._index = index
             self._xy_indexes = None
+            xtransform = cast(AffineTransform, index.transform)
+            dim_size = xtransform.dim_size
+            xy_dims = xtransform.xy_dims
+            self._xy_shape = (dim_size[xy_dims[XAXIS]], dim_size[xy_dims[YAXIS]])
+            self._xy_dims = xtransform.xy_dims
+            self._xy_coord_names = (xtransform.coord_names[XAXIS], xtransform.coord_names[YAXIS])
         elif (
             isinstance(index, tuple)
             and len(index) == 2
-            and isinstance(index[0], AxisAffineTransformIndex)
-            and isinstance(index[1], AxisAffineTransformIndex)
+            and isinstance(index[XAXIS], AxisAffineTransformIndex)
+            and isinstance(index[YAXIS], AxisAffineTransformIndex)
         ):
             self._index = None
             self._xy_indexes = index
+            self._xy_shape = (index[XAXIS].axis_transform.size, index[YAXIS].axis_transform.size)
+            self._xy_dims = (index[XAXIS].axis_transform.dim, index[YAXIS].axis_transform.dim)
+            self._xy_coord_names = (
+                index[XAXIS].axis_transform.coord_name,
+                index[YAXIS].axis_transform.coord_name,
+            )
         else:
             raise ValueError("invalid index")
-
-        if self._xy_indexes is not None:
-            self._shape = (self._xy_indexes[0].axis_transform.size, self._xy_indexes[1].axis_transform.size)
-        else:
-            assert self._index is not None
-            dims = cast(AffineTransform, self._index.transform).xy_dims
-            dim_size = self._index.transform.dim_size
-            self._shape = (dim_size[dims[0]], dim_size[dims[1]])
 
     @property
     def _wrapped_indexes(self) -> tuple[CoordinateTransformIndex | AxisAffineTransformIndex, ...]:
@@ -400,6 +411,24 @@ class RasterIndex(Index):
 
         assert self._index is not None
         return (self._index,)
+
+    @property
+    def xy_shape(self) -> tuple[int, int]:
+        """Return the dimension size of the X and Y axis, respectively."""
+        return self._xy_shape
+
+    @property
+    def xy_dims(self) -> tuple[str, str]:
+        """Return the dimension name of the X and Y axis, respectively."""
+        return self._xy_dims
+
+    @property
+    def xy_coord_names(self) -> tuple[Hashable, Hashable]:
+        """Return the name of the coordinate variables representing labels on
+        the X and Y axis, respectively.
+
+        """
+        return self._xy_coord_names
 
     @classmethod
     def from_transform(
@@ -557,8 +586,8 @@ class RasterIndex(Index):
 
         assert self._xy_indexes is not None
 
-        x = self._xy_indexes[0].axis_transform.affine
-        y = self._xy_indexes[1].axis_transform.affine
+        x = self._xy_indexes[XAXIS].axis_transform.affine
+        y = self._xy_indexes[YAXIS].axis_transform.affine
         return Affine(x.a, x.b, x.c, y.d, y.e, y.f)
 
     @property
@@ -569,7 +598,8 @@ class RasterIndex(Index):
         -------
         BoundingBox
         """
-        return BoundingBox.from_transform(shape=(self._shape[1], self._shape[0]), transform=self.transform())
+        yx_shape = (self.xy_shape[YAXIS], self.xy_shape[XAXIS])
+        return BoundingBox.from_transform(shape=yx_shape, transform=self.transform())
 
     @classmethod
     def concat(
@@ -615,13 +645,7 @@ class RasterIndex(Index):
         return self._new_with_bbox(new_bbox)
 
     def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
-        if self._xy_indexes is not None:
-            x_dim = self._xy_indexes[0].axis_transform.dim
-            y_dim = self._xy_indexes[1].axis_transform.dim
-        else:
-            assert self._index is not None
-            x_dim, y_dim = cast(AffineTransform, self._index.transform).xy_dims
-
+        x_dim, y_dim = self.xy_dims
         affine = self.transform()
         ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
         inter = bbox_intersection([ours, theirs])
@@ -635,10 +659,10 @@ class RasterIndex(Index):
 
         indexers = {}
         indexers[x_dim] = get_indexer(
-            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other._shape[0]
+            theirs.left, ours.left, inter.left, inter.right, spacing=dx, tol=tol, size=other.xy_shape[XAXIS]
         )
         indexers[y_dim] = get_indexer(
-            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other._shape[1]
+            theirs.top, ours.top, inter.top, inter.bottom, spacing=dy, tol=tol, size=other.xy_shape[YAXIS]
         )
         return indexers
 
@@ -678,10 +702,10 @@ def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> 
     _assert_transforms_are_compatible(*transforms)
 
     expected_off_x = (transforms[0].c,) + tuple(
-        t.c + i._shape[0] * t.a for i, t in zip(indexes[:-1], transforms[:-1])
+        t.c + i.xy_shape[XAXIS] * t.a for i, t in zip(indexes[:-1], transforms[:-1])
     )
     expected_off_y = (transforms[0].f,) + tuple(
-        t.f + i._shape[1] * t.e for i, t in zip(indexes[:-1], transforms[:-1])
+        t.f + i.xy_shape[YAXIS] * t.e for i, t in zip(indexes[:-1], transforms[:-1])
     )
 
     off_x = tuple(t.c for t in transforms)
