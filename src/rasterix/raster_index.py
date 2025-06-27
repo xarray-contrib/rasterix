@@ -518,40 +518,40 @@ class RasterIndex(Index):
         if not self._axis_independent:
             # preserve RasterIndex is not supported in the case of coupled x/y 2D coordinates
             return None
-
-        new_indexes = []
-
-        for index in self._xy_indexes:
-            dim = index.axis_transform.dim
-
-            if dim not in indexers:
-                # simply propagate the index
-                new_indexes.append(index)
-            else:
-                new_index = index.isel({dim: indexers[dim]})
-                if new_index is not None:
-                    new_indexes.append(new_index)
-
-        # TODO: if/when supported in Xarray, return PandasIndex instances for either the
-        # x or the y axis (or both) instead of returning None (drop the index)
-        if len(new_indexes) == 2:
-            return RasterIndex(tuple(new_indexes))
         else:
-            return None
+            new_indexes = []
+
+            for index in self._xy_indexes:
+                dim = index.axis_transform.dim
+
+                if dim not in indexers:
+                    # simply propagate the index
+                    new_indexes.append(index)
+                else:
+                    new_index = index.isel({dim: indexers[dim]})
+                    if new_index is not None:
+                        new_indexes.append(new_index)
+
+            # TODO: if/when supported in Xarray, return PandasIndex instances for either the
+            # x or the y axis (or both) instead of returning None (drop the index)
+            if len(new_indexes) == 2:
+                return RasterIndex(tuple(new_indexes))
+            else:
+                return None
 
     def sel(self, labels: dict[Any, Any], method=None, tolerance=None) -> IndexSelResult:
         if not self._axis_independent:
             return self._xxyy_index.sel(labels, method=method, tolerance=tolerance)
+        else:
+            results: list[IndexSelResult] = []
 
-        results: list[IndexSelResult] = []
+            for index in self._xy_indexes:
+                coord_name = index.axis_transform.coord_name
+                if coord_name in labels:
+                    res = index.sel({coord_name: labels[coord_name]}, method=method, tolerance=tolerance)
+                    results.append(res)
 
-        for index in self._xy_indexes:
-            coord_name = index.axis_transform.coord_name
-            if coord_name in labels:
-                res = index.sel({coord_name: labels[coord_name]}, method=method, tolerance=tolerance)
-                results.append(res)
-
-        return merge_sel_results(results)
+            return merge_sel_results(results)
 
     def equals(self, other: Index, *, exclude=None) -> bool:
         if exclude is None:
