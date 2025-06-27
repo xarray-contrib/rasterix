@@ -370,7 +370,7 @@ class RasterIndex(Index):
 
     """
 
-    _index: CoordinateTransformIndex | tuple[AxisAffineTransformIndex, AxisAffineTransformIndex]
+    _index: WrappedIndex
     _axis_independent: bool
     _xy_shape: tuple[int, int]
     _xy_dims: tuple[str, str]
