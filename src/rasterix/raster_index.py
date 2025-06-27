@@ -715,15 +715,17 @@ def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> 
         if all(o == off_x[0] for o in off_x[1:]) and all(o == off_y[0] for o in off_y[1:]):
             raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
 
-    # TODO: get concat x or y axis dimension name from the index (not hard-coded)
-    if concat_dim == "x":
+    # note: Xarray alignment already ensures that the indexes dimensions are compatible.
+    x_dim, y_dim = indexes[0].xy_dims
+
+    if concat_dim == x_dim:
         if any(off_y[0] != o for o in off_y[1:]):
             raise ValueError("offsets must be identical in X when concatenating along Y")
         if any(a != b for a, b in zip(off_x, expected_off_x)):
             raise ValueError(
                 f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
             )
-    elif concat_dim == "y":
+    elif concat_dim == y_dim:
         if any(off_x[0] != o for o in off_x[1:]):
             raise ValueError("offsets must be identical in X when concatenating along Y")
 
