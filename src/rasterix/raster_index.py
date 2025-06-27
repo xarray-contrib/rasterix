@@ -399,7 +399,7 @@ class RasterIndex(Index):
                 index[YAXIS].axis_transform.coord_name,
             )
         else:
-            raise ValueError("invalid index")
+            raise ValueError(f"Could not create RasterIndex. Received invalid index {index!r}")
 
         self._index = index
 
