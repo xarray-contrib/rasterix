@@ -370,16 +370,15 @@ class RasterIndex(Index):
 
     """
 
-    _index: CoordinateTransformIndex | None
-    _xy_indexes: tuple[AxisAffineTransformIndex, AxisAffineTransformIndex] | None
+    _index: CoordinateTransformIndex | tuple[AxisAffineTransformIndex, AxisAffineTransformIndex]
+    _axis_independent: bool
     _xy_shape: tuple[int, int]
     _xy_dims: tuple[str, str]
     _xy_coord_names: tuple[Hashable, Hashable]
 
     def __init__(self, index: WrappedIndex):
         if isinstance(index, CoordinateTransformIndex) and isinstance(index.transform, AffineTransform):
-            self._index = index
-            self._xy_indexes = None
+            self._axis_independent = False
             xtransform = cast(AffineTransform, index.transform)
             dim_size = xtransform.dim_size
             xy_dims = xtransform.xy_dims
@@ -392,8 +391,7 @@ class RasterIndex(Index):
             and isinstance(index[XAXIS], AxisAffineTransformIndex)
             and isinstance(index[YAXIS], AxisAffineTransformIndex)
         ):
-            self._index = None
-            self._xy_indexes = index
+            self._axis_independent = True
             self._xy_shape = (index[XAXIS].axis_transform.size, index[YAXIS].axis_transform.size)
             self._xy_dims = (index[XAXIS].axis_transform.dim, index[YAXIS].axis_transform.dim)
             self._xy_coord_names = (
@@ -403,14 +401,25 @@ class RasterIndex(Index):
         else:
             raise ValueError("invalid index")
 
+        self._index = index
+
     @property
     def _wrapped_indexes(self) -> tuple[CoordinateTransformIndex | AxisAffineTransformIndex, ...]:
-        """Returns the wrapped index objects."""
-        if self._xy_indexes is not None:
-            return self._xy_indexes
+        """Returns the wrapped index objects as a tuple."""
+        if not isinstance(self._index, tuple):
+            return (self._index,)
+        else:
+            return self._index
 
-        assert self._index is not None
-        return (self._index,)
+    @property
+    def _xy_indexes(self) -> tuple[AxisAffineTransformIndex, AxisAffineTransformIndex]:
+        assert self._axis_independent
+        return cast(tuple[AxisAffineTransformIndex, AxisAffineTransformIndex], self._index)
+
+    @property
+    def _xxyy_index(self) -> CoordinateTransformIndex:
+        assert not self._axis_independent
+        return cast(CoordinateTransformIndex, self._index)
 
     @property
     def xy_shape(self) -> tuple[int, int]:
@@ -506,11 +515,9 @@ class RasterIndex(Index):
         return new_variables
 
     def isel(self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]) -> RasterIndex | None:
-        if self._index is not None:
+        if not self._axis_independent:
             # preserve RasterIndex is not supported in the case of coupled x/y 2D coordinates
             return None
-
-        assert self._xy_indexes is not None
 
         new_indexes = []
 
@@ -533,10 +540,8 @@ class RasterIndex(Index):
             return None
 
     def sel(self, labels: dict[Any, Any], method=None, tolerance=None) -> IndexSelResult:
-        if self._index is not None:
-            return self._index.sel(labels, method=method, tolerance=tolerance)
-
-        assert self._xy_indexes is not None
+        if not self._axis_independent:
+            return self._xxyy_index.sel(labels, method=method, tolerance=tolerance)
 
         results: list[IndexSelResult] = []
 
@@ -554,17 +559,17 @@ class RasterIndex(Index):
 
         if not isinstance(other, RasterIndex):
             return False
+        if self._axis_independent != other._axis_independent:
+            return False
 
-        if self._index is not None and other._index is not None:
-            return self._index.equals(other._index)
-        elif self._xy_indexes is not None and other._xy_indexes is not None:
+        if self._axis_independent:
             return all(
                 idx.equals(other_idx)
                 for idx, other_idx in zip(self._xy_indexes, other._xy_indexes)
                 if idx.axis_transform.dim not in exclude
             )
         else:
-            return False
+            return self._xxyy_index.equals(other._xxyy_index)
 
     def __repr__(self):
         items: list[str] = []
@@ -581,14 +586,12 @@ class RasterIndex(Index):
 
     def center_transform(self) -> Affine:
         """Affine transform for cell centers."""
-        if self._index is not None:
-            return cast(AffineTransform, self._index.transform).affine
-
-        assert self._xy_indexes is not None
-
-        x = self._xy_indexes[XAXIS].axis_transform.affine
-        y = self._xy_indexes[YAXIS].axis_transform.affine
-        return Affine(x.a, x.b, x.c, y.d, y.e, y.f)
+        if not self._axis_independent:
+            return cast(AffineTransform, self._xxyy_index.transform).affine
+        else:
+            x = self._xy_indexes[XAXIS].axis_transform.affine
+            y = self._xy_indexes[YAXIS].axis_transform.affine
+            return Affine(x.a, x.b, x.c, y.d, y.e, y.f)
 
     @property
     def bbox(self) -> BoundingBox:
