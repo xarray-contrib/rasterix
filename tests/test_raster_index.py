@@ -25,6 +25,21 @@ def test_rectilinear():
     assert da_raster_index.equals(da_no_raster_index)
 
 
+def test_raster_index_properties():
+    index1 = RasterIndex.from_transform(Affine.identity(), 12, 10)
+    assert index1.xy_shape == (12, 10)
+    assert index1.xy_dims == ("x", "y")
+    assert index1.xy_coord_names == ("x", "y")
+
+    index2 = RasterIndex.from_transform(Affine.identity(), 12, 10, x_dim="x_", y_dim="y_")
+    assert index2.xy_dims == ("x_", "y_")
+
+    index3 = RasterIndex.from_transform(Affine.rotation(45.0), 12, 10)
+    assert index3.xy_shape == (12, 10)
+    assert index3.xy_dims == ("x", "y")
+    assert index3.xy_coord_names == ("xc", "yc")
+
+
 # TODO: parameterize over
 # 1. y points up;
 # 2. y points down
