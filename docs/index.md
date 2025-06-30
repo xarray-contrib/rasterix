@@ -9,6 +9,7 @@ hidden:
 ---
 raster_index/aligning
 raster_index/combining
+raster_index/design_choices
 ```
 
 ```{toctree}
