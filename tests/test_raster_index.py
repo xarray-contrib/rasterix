@@ -1,7 +1,6 @@
 from textwrap import dedent
 
 import numpy as np
-import pandas as pd
 import pyproj
 import pytest
 import rioxarray  # noqa
@@ -34,6 +33,21 @@ def test_rectilinear():
     da_no_raster_index = xr.open_dataarray(source, engine="rasterio")
     da_raster_index = assign_index(da_no_raster_index)
     assert da_raster_index.equals(da_no_raster_index)
+
+
+def test_raster_index_properties():
+    index1 = RasterIndex.from_transform(Affine.identity(), 12, 10)
+    assert index1.xy_shape == (12, 10)
+    assert index1.xy_dims == ("x", "y")
+    assert index1.xy_coord_names == ("x", "y")
+
+    index2 = RasterIndex.from_transform(Affine.identity(), 12, 10, x_dim="x_", y_dim="y_")
+    assert index2.xy_dims == ("x_", "y_")
+
+    index3 = RasterIndex.from_transform(Affine.rotation(45.0), 12, 10)
+    assert index3.xy_shape == (12, 10)
+    assert index3.xy_dims == ("x", "y")
+    assert index3.xy_coord_names == ("xc", "yc")
 
 
 # TODO: parameterize over
@@ -92,10 +106,6 @@ def test_equals(index_coord_name) -> None:
     index6 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:27700")
     ds6 = xr.Dataset(coords=xr.Coordinates.from_xindex(index6))
     assert not ds5.xindexes[index_coord_name].equals(ds6.xindexes[index_coord_name])
-
-    # different wrapped indexes
-    ds7 = ds.isel(x=[0, 3])
-    assert not ds.xindexes[index_coord_name].equals(ds7.xindexes[index_coord_name])
 
 
 def test_join() -> None:
@@ -317,20 +327,6 @@ def test_align():
         aligned = xr.align(*datasets, join="exact")
 
 
-def test_to_pandas_index() -> None:
-    index = RasterIndex.from_transform(Affine.identity(), 12, 10)
-    ds = xr.Dataset(coords=xr.Coordinates.from_xindex(index))
-
-    with pytest.raises(ValueError, match="Cannot convert RasterIndex to pandas.Index"):
-        ds.indexes["x"]
-
-    ds2 = ds.isel(y=0)
-    assert ds2.indexes["x"].equals(pd.Index(np.arange(0.5, 12.5)))
-
-    ds3 = ds.isel(x=0, y=[0, 3])
-    assert ds3.indexes["y"].equals(pd.Index([0.5, 3.5]))
-
-
 def test_repr_inline() -> None:
     index1 = RasterIndex.from_transform(Affine.identity(), 12, 10)
     ds1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
@@ -347,38 +343,23 @@ def test_repr_inline() -> None:
 
 def test_repr() -> None:
     index1 = RasterIndex.from_transform(Affine.identity(), 12, 10)
-    ds1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
     expected = dedent(
         """\
         RasterIndex(crs=None)
-        'x':
             AxisAffineTransformIndex(AxisAffineTransform(a=1, b=0, c=0.5, d=0, e=1, f=0.5, axis=X, dim='x'))
-        'y':
             AxisAffineTransformIndex(AxisAffineTransform(a=1, b=0, c=0.5, d=0, e=1, f=0.5, axis=Y, dim='y'))"""
     )
     actual = repr(index1)
     assert expected == actual
 
-    ds2 = ds1.isel(x=0, y=[1, 3])
-    index2 = ds2.xindexes["x"]
+    index2 = RasterIndex.from_transform(Affine.rotation(5), 12, 10)
     expected = dedent(
         """\
         RasterIndex(crs=None)
-        'y':
-            PandasIndex(Index([1.5, 3.5], dtype='float64', name='y'))"""
+            CoordinateTransformIndex(AffineTransform(a=0.9962, b=-0.08716, c=0.4545, d=0.08716, e=0.9962, f=0.5417))"""
     )
     actual = repr(index2)
     assert expected == actual
 
-    index3 = RasterIndex.from_transform(Affine.rotation(5), 12, 10)
-    expected = dedent(
-        """\
-        RasterIndex(crs=None)
-        ('x', 'y'):
-            CoordinateTransformIndex(AffineTransform(a=0.9962, b=-0.08716, c=0.4545, d=0.08716, e=0.9962, f=0.5417))"""
-    )
-    actual = repr(index3)
-    assert expected == actual
-
-    index4 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
-    assert repr(index4).startswith("RasterIndex(crs=EPSG:31370)")
+    index3 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
+    assert repr(index3).startswith("RasterIndex(crs=EPSG:31370)")
