@@ -24,7 +24,9 @@ def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
     return None
 
 
-def get_affine(obj: xr.Dataset | xr.DataArray, *, x_dim="x", y_dim="y") -> Affine:
+def get_affine(
+    obj: xr.Dataset | xr.DataArray, *, x_dim="x", y_dim="y", clear_transform: bool = False
+) -> Affine:
     """
     Grabs an affine transform from an Xarray object.
 
@@ -39,6 +41,8 @@ def get_affine(obj: xr.Dataset | xr.DataArray, *, x_dim="x", y_dim="y") -> Affin
         Name of the X dimension coordinate variable.
     y_dim: str, optional
         Name of the Y dimension coordinate variable.
+    clear_transform: bool
+       Whether to delete the ``GeoTransform`` attribute if detected.
 
     Returns
     -------
@@ -46,6 +50,8 @@ def get_affine(obj: xr.Dataset | xr.DataArray, *, x_dim="x", y_dim="y") -> Affin
     """
     grid_mapping_var = get_grid_mapping_var(obj)
     if grid_mapping_var is not None and (transform := grid_mapping_var.attrs.get("GeoTransform")):
+        if clear_transform:
+            del grid_mapping_var.attrs["GeoTransform"]
         return Affine.from_gdal(*map(float, transform.split(" ")))
     else:
         x = obj.coords[x_dim]

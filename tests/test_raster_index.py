@@ -85,6 +85,7 @@ def test_sel_slice():
     transform = Affine.identity()
     ds.coords["spatial_ref"] = ((), 0, {"GeoTransform": " ".join(map(str, transform.to_gdal()))})
     ds = assign_index(ds)
+    assert "GeoTransform" not in ds.spatial_ref.attrs
     assert ds.xindexes["x"].transform() == transform
 
     actual = ds.sel(x=slice(4), y=slice(3, 5))
