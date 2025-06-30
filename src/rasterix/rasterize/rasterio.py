@@ -15,7 +15,8 @@ from rasterio.features import MergeAlg
 from rasterio.features import geometry_mask as geometry_mask_rio
 from rasterio.features import rasterize as rasterize_rio
 
-from .utils import XAXIS, YAXIS, clip_to_bbox, get_affine, is_in_memory, prepare_for_dask
+from ..utils import get_affine
+from .utils import XAXIS, YAXIS, clip_to_bbox, is_in_memory, prepare_for_dask
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -161,7 +162,7 @@ def rasterize(
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
     rasterize_kwargs = dict(
-        all_touched=all_touched, merge_alg=merge_alg, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
+        all_touched=all_touched, merge_alg=merge_alg, affine=get_affine(obj, x_dim=xdim, y_dim=ydim), env=env
     )
     # FIXME: box.crs == geometries.crs
 
@@ -325,7 +326,7 @@ def geometry_mask(
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
     geometry_mask_kwargs = dict(
-        all_touched=all_touched, affine=get_affine(obj, xdim=xdim, ydim=ydim), env=env
+        all_touched=all_touched, affine=get_affine(obj, x_dim=xdim, y_dim=ydim), env=env
     )
 
     if is_in_memory(obj=obj, geometries=geometries):

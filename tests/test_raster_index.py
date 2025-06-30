@@ -9,6 +9,7 @@ from affine import Affine
 from xarray.testing import assert_identical
 
 from rasterix import RasterIndex, assign_index
+from rasterix.utils import get_grid_mapping_var
 
 CRS_ATTRS = pyproj.CRS.from_epsg(4326).to_cf()
 
@@ -18,6 +19,32 @@ def dataset_from_transform(transform: str) -> xr.Dataset:
         {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
         coords={"spatial_ref": ((), 0, CRS_ATTRS | {"GeoTransform": transform})},
     ).pipe(assign_index)
+
+
+def test_grid_mapping_var():
+    obj = xr.DataArray()
+    assert get_grid_mapping_var(obj) is None
+
+    obj = xr.Dataset()
+    assert get_grid_mapping_var(obj) is None
+
+    obj = xr.DataArray(attrs={"grid_mapping": "spatial_ref"})
+    assert get_grid_mapping_var(obj) is None
+
+    obj = xr.DataArray(attrs={"grid_mapping": "spatial_ref"}, coords={"spatial_ref": 0})
+    assert_identical(get_grid_mapping_var(obj), obj["spatial_ref"])
+
+    obj = xr.Dataset({"foo": ((), 0, {"grid_mapping": "spatial_ref"})})
+    assert get_grid_mapping_var(obj) is None
+
+    obj = xr.Dataset(
+        {
+            "foo": ((), 0, {"grid_mapping": "spatial_ref_0"}),
+            "zoo": ((), 0, {"grid_mapping": "spatial_ref_1"}),
+        },
+        coords={"spatial_ref_1": 0},
+    )
+    assert_identical(get_grid_mapping_var(obj), obj["spatial_ref_1"])
 
 
 def test_set_xindex() -> None:
@@ -56,18 +83,16 @@ def test_raster_index_properties():
 def test_sel_slice():
     ds = xr.Dataset({"foo": (("y", "x"), np.ones((10, 12)))})
     transform = Affine.identity()
-    ds = ds.rio.write_transform(transform)
+    ds.coords["spatial_ref"] = ((), 0, {"GeoTransform": " ".join(map(str, transform.to_gdal()))})
     ds = assign_index(ds)
-
     assert ds.xindexes["x"].transform() == transform
 
     actual = ds.sel(x=slice(4), y=slice(3, 5))
     assert isinstance(actual.xindexes["x"], RasterIndex)
     assert isinstance(actual.xindexes["y"], RasterIndex)
-    actual_transform = actual.xindexes["x"].transform()
 
-    assert actual_transform == actual.rio.transform()
-    assert actual_transform == (transform * Affine.translation(0, 3))
+    actual_transform = actual.xindexes["x"].transform()
+    assert actual_transform == transform * Affine.translation(0, 3)
 
 
 def test_crs() -> None:

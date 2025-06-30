@@ -154,7 +154,8 @@ napoleon_preprocess_types = True
 napoleon_type_aliases = {
     # general terms
     "sequence": ":term:`sequence`",
-    "iterable": ":term:`iterable`",
+    "Hashable": ":term:`sequence`",
+    "iterable": "~collections.abc.Hashable",
     "callable": ":py:func:`callable`",
     "dict_like": ":term:`dict-like <mapping>`",
     "dict-like": ":term:`dict-like <mapping>`",
