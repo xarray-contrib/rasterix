@@ -32,7 +32,9 @@ XAXIS = 0
 YAXIS = 1
 
 
-def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None) -> T_Xarray:
+def assign_index(
+    obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None, crs: bool = True
+) -> T_Xarray:
     """Assign a RasterIndex to an Xarray DataArray or Dataset.
 
     Parameters
@@ -43,6 +45,8 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
         Name of the x dimension. If None, will be automatically detected.
     y_dim : str, optional
         Name of the y dimension. If None, will be automatically detected.
+    crs: bool, optional
+       Auto-detect CRS using xproj?
 
     Returns
     -------
@@ -69,7 +73,7 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
         height=obj.sizes[y_dim],
         x_dim=x_dim,
         y_dim=y_dim,
-        crs=obj.proj.crs,
+        crs=obj.proj.crs if crs else None,
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
