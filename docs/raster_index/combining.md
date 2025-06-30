@@ -21,7 +21,7 @@ xr.set_options(display_expand_indexes=True);
 
 # Combining
 
-{py:class}`RasterIndex` supports concatenation along a single axis through either {py:func}`xarray.concat` or {py:func}`xarray.combine_nested`.
+{py:class}`RasterIndex` supports concatenation along a single axis through either {py:func}`xarray.concat` or across multiple axes using {py:func}`xarray.combine_nested`.
 In all cases, a new {py:class}`RasterIndex` is created.
 
 Cases (a) and (b) in the following image are supported, case (c) is not.
