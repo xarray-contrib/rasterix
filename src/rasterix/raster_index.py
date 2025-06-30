@@ -201,14 +201,10 @@ class AxisAffineTransform(CoordinateTransform):
         return self.forward({self.dim: np.arange(self.size)})
 
     def slice(self, slice: slice) -> AxisAffineTransform:
-        start = max(slice.start or 0, 0)
-        stop = min(slice.stop or self.size, self.size)
-        step = slice.step or 1
-
-        # TODO: support reverse transform (i.e., start > stop)?
-        assert start < stop
-
-        size = (stop - start) // step
+        newrange = range(self.size)[slice]
+        start = newrange.start
+        step = newrange.step or 1
+        size = len(newrange)
         scale = float(step)
 
         if self.is_xaxis:
