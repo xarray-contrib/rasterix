@@ -64,7 +64,7 @@ def assign_index(obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None =
     y_dim = y_dim or guessed_y
 
     index = RasterIndex.from_transform(
-        obj.rio.transform(), obj.sizes[x_dim], obj.sizes[y_dim], x_dim=x_dim, y_dim=y_dim
+        obj.rio.transform(), width=obj.sizes[x_dim], height=obj.sizes[y_dim], x_dim=x_dim, y_dim=y_dim
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
@@ -464,6 +464,7 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
     def from_transform(
         cls,
         affine: Affine,
+        *,
         width: int,
         height: int,
         x_dim: str = "x",

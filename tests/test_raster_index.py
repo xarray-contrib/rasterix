@@ -36,15 +36,15 @@ def test_rectilinear():
 
 
 def test_raster_index_properties():
-    index1 = RasterIndex.from_transform(Affine.identity(), 12, 10)
+    index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     assert index1.xy_shape == (12, 10)
     assert index1.xy_dims == ("x", "y")
     assert index1.xy_coord_names == ("x", "y")
 
-    index2 = RasterIndex.from_transform(Affine.identity(), 12, 10, x_dim="x_", y_dim="y_")
+    index2 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, x_dim="x_", y_dim="y_")
     assert index2.xy_dims == ("x_", "y_")
 
-    index3 = RasterIndex.from_transform(Affine.rotation(45.0), 12, 10)
+    index3 = RasterIndex.from_transform(Affine.rotation(45.0), width=12, height=10)
     assert index3.xy_shape == (12, 10)
     assert index3.xy_dims == ("x", "y")
     assert index3.xy_coord_names == ("xc", "yc")
@@ -71,17 +71,17 @@ def test_sel_slice():
 
 
 def test_crs() -> None:
-    index = RasterIndex.from_transform(Affine.identity(), 12, 10)
+    index = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     assert index.crs is None
 
-    index = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
+    index = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     assert index.crs == pyproj.CRS.from_user_input("epsg:31370")
 
 
 # asserting (in)equality for both "x" and "y" is redundant but not harmful
 @pytest.mark.parametrize("index_coord_name", ["x", "y"])
 def test_equals(index_coord_name) -> None:
-    index = RasterIndex.from_transform(Affine.identity(), 12, 10)
+    index = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     ds = xr.Dataset(coords=xr.Coordinates.from_xindex(index))
 
     ds2 = ds.isel(x=slice(None), y=slice(None))
@@ -93,26 +93,26 @@ def test_equals(index_coord_name) -> None:
     assert not ds.xindexes[index_coord_name].equals(ds3.xindexes[index_coord_name])
 
     # same affine transform but different shape
-    index4 = RasterIndex.from_transform(Affine.identity(), 6, 5)
+    index4 = RasterIndex.from_transform(Affine.identity(), width=6, height=5)
     ds4 = xr.Dataset(coords=xr.Coordinates.from_xindex(index4))
     assert not ds.xindexes[index_coord_name].equals(ds4.xindexes[index_coord_name])
 
     # undefined vs. defined CRS
-    index5 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
+    index5 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     ds5 = xr.Dataset(coords=xr.Coordinates.from_xindex(index5))
     assert ds.xindexes[index_coord_name].equals(ds5.xindexes[index_coord_name])
 
     # conflicting CRSs
-    index6 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:27700")
+    index6 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:27700")
     ds6 = xr.Dataset(coords=xr.Coordinates.from_xindex(index6))
     assert not ds5.xindexes[index_coord_name].equals(ds6.xindexes[index_coord_name])
 
 
 def test_join() -> None:
-    index_crs1 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
+    index_crs1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     ds_crs1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index_crs1))
 
-    index_crs2 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:27700")
+    index_crs2 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:27700")
     ds_crs2 = xr.Dataset(coords=xr.Coordinates.from_xindex(index_crs2))
 
     with pytest.raises(ValueError, match="raster indexes.*do not have the same CRS"):
@@ -328,13 +328,13 @@ def test_align():
 
 
 def test_repr_inline() -> None:
-    index1 = RasterIndex.from_transform(Affine.identity(), 12, 10)
+    index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     ds1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
     actual = ds1.xindexes["x"]._repr_inline_(70)
     expected = "RasterIndex (crs=None)"
     assert actual == expected
 
-    index2 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
+    index2 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     ds2 = xr.Dataset(coords=xr.Coordinates.from_xindex(index2))
     actual = ds2.xindexes["x"]._repr_inline_(70)
     expected = "RasterIndex (crs=EPSG:31370)"
@@ -342,7 +342,7 @@ def test_repr_inline() -> None:
 
 
 def test_repr() -> None:
-    index1 = RasterIndex.from_transform(Affine.identity(), 12, 10)
+    index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     expected = dedent(
         """\
         RasterIndex(crs=None)
@@ -352,7 +352,7 @@ def test_repr() -> None:
     actual = repr(index1)
     assert expected == actual
 
-    index2 = RasterIndex.from_transform(Affine.rotation(5), 12, 10)
+    index2 = RasterIndex.from_transform(Affine.rotation(5), width=12, height=10)
     expected = dedent(
         """\
         RasterIndex(crs=None)
@@ -361,5 +361,5 @@ def test_repr() -> None:
     actual = repr(index2)
     assert expected == actual
 
-    index3 = RasterIndex.from_transform(Affine.identity(), 12, 10, crs="epsg:31370")
+    index3 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     assert repr(index3).startswith("RasterIndex(crs=EPSG:31370)")
