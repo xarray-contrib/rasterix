@@ -486,6 +486,9 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
             Name for the x dimension.
         y_dim : str, default "y"
             Name for the y dimension.
+        crs : :class:`pyproj.crs.CRS` or any, optional
+            The coordinate reference system. Any value accepted by
+            :meth:`pyproj.crs.CRS.from_user_input`.
 
         Returns
         -------
