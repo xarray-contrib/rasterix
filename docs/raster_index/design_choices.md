@@ -58,4 +58,4 @@ because it does not control it.
 Thus, {py:func}`assign_index` will delete the `"GeoTransform"` attribute on the grid mapping variable if it is detected, after using it
 to construct the affine matrix.
 
-If you wish to extract the GeoTransform attribute to write it to a location of your choosing use \{py:meth}{RasterIndex.as_geotransform}
+If you wish to extract the GeoTransform attribute to write it to a location of your choosing use {py:meth}`RasterIndex.as_geotransform`.
