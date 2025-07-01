@@ -6,7 +6,7 @@ import pytest
 import rioxarray  # noqa
 import xarray as xr
 from affine import Affine
-from xarray.testing import assert_identical
+from xarray.testing import assert_equal, assert_identical
 
 from rasterix import RasterIndex, assign_index
 from rasterix.utils import get_grid_mapping_var
@@ -389,3 +389,29 @@ def test_repr() -> None:
 
     index3 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     assert repr(index3).startswith("RasterIndex(crs=EPSG:31370)")
+
+
+def test_assign_index_cant_guess_error():
+    ds = xr.Dataset(
+        {"sst": (("time", "lat", "lon"), np.ones((1, 89, 180)))},
+        coords={"lat": np.arange(88, -89, -2), "lon": np.arange(0, 360, 2)},
+    )
+    with pytest.raises(ValueError, match="guess"):
+        assign_index(ds)
+
+
+def test_wraparound_indexing_longitude():
+    ds = xr.Dataset(
+        {"sst": (("time", "lat", "lon"), np.random.random((1, 89, 180)))},
+        coords={
+            "lat": ("lat", np.arange(88, -89, -2), {"axis": "Y"}),
+            "lon": ("lon", np.arange(0, 360, 2), {"axis": "X"}),
+        },
+    )
+    indexed = ds.pipe(assign_index)
+    # We lose existing attrs when calling ``assign_index``.
+    assert_equal(ds.sel(lon=[220, 240]), indexed.sel(lon=[-140, -120]))
+    assert_equal(ds.sel(lon=220), indexed.sel(lon=-140))
+    assert_equal(ds.sel(lon=slice(220, 240)), indexed.sel(lon=slice(-140, -120)))
+    assert_equal(ds.sel(lon=slice(240, 220)), indexed.sel(lon=slice(-120, -140)))
+    # assert_equal(ds.sel(lon=[220]), indexed.sel(lon=[-140]))  # FIXME

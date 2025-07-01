@@ -303,6 +303,8 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
             # return PandasIndex(values, new_dim, coord_dtype=values.dtype)
 
     def sel(self, labels, method=None, tolerance=None):
+        # CoordinateTransformIndex only supports "nearest"
+        method = method or "nearest"
         coord_name = self.axis_transform.coord_name
         label = labels[coord_name]
 
@@ -535,8 +537,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         affine = affine * Affine.translation(0.5, 0.5)
 
         if affine.is_rectilinear and affine.b == affine.d == 0:
-            x_transform = AxisAffineTransform(affine, width, "x", x_dim, is_xaxis=True)
-            y_transform = AxisAffineTransform(affine, height, "y", y_dim, is_xaxis=False)
+            x_transform = AxisAffineTransform(affine, width, x_dim, x_dim, is_xaxis=True)
+            y_transform = AxisAffineTransform(affine, height, y_dim, y_dim, is_xaxis=False)
             index = (
                 AxisAffineTransformIndex(x_transform),
                 AxisAffineTransformIndex(y_transform),
