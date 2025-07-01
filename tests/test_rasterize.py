@@ -2,7 +2,6 @@ import dask_geopandas as dgpd
 import geodatasets
 import geopandas as gpd
 import pytest
-import rioxarray  # noqa
 import xarray as xr
 import xproj  # noqa
 from xarray.tests import raise_if_dask_computes
