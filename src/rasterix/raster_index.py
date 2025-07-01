@@ -646,6 +646,15 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         """Affine transform for top-left corners."""
         return self.center_transform() * Affine.translation(-0.5, -0.5)
 
+    def as_geotransform(self, *, decimals: int | None = None) -> str:
+        """Convert the affine transform to a string suitable for saving as the GeoTransform attribute."""
+        gt = self.transform().to_gdal()
+        if decimals is not None:
+            fmt = f".{decimals}f"
+            return " ".join(f"{num:{fmt}}" for num in gt)
+        else:
+            return " ".join(map(str, gt))
+
     def center_transform(self) -> Affine:
         """Affine transform for cell centers."""
         if not self._axis_independent:

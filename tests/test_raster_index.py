@@ -3,7 +3,6 @@ from textwrap import dedent
 import numpy as np
 import pyproj
 import pytest
-import rioxarray  # noqa
 import xarray as xr
 from affine import Affine
 from xarray.testing import assert_identical
@@ -67,14 +66,21 @@ def test_raster_index_properties():
     assert index1.xy_shape == (12, 10)
     assert index1.xy_dims == ("x", "y")
     assert index1.xy_coord_names == ("x", "y")
+    assert index1.as_geotransform() == "0.0 1.0 0.0 0.0 0.0 1.0"
 
     index2 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, x_dim="x_", y_dim="y_")
     assert index2.xy_dims == ("x_", "y_")
+    assert index2.as_geotransform() == "0.0 1.0 0.0 0.0 0.0 1.0"
 
     index3 = RasterIndex.from_transform(Affine.rotation(45.0), width=12, height=10)
     assert index3.xy_shape == (12, 10)
     assert index3.xy_dims == ("x", "y")
     assert index3.xy_coord_names == ("xc", "yc")
+    assert (
+        index3.as_geotransform()
+        == "0.0 0.7071067811865476 -0.7071067811865475 0.0 0.7071067811865475 0.7071067811865476"
+    )
+    assert index3.as_geotransform(decimals=6) == "0.000000 0.707107 -0.707107 0.000000 0.707107 0.707107"
 
 
 # TODO: parameterize over
