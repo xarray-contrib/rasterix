@@ -11,7 +11,7 @@ Ultimately, there are no easy answers and tradeoffs to be made.
 
 {py:class}`xproj.CRSIndex` is an attempt at providing a building block for CRS handling in the Xarray ecosystem.
 
-How might {py:class}`RasterIndex` fit with that vision? Our options are:
+How might `RasterIndex` integrate with `xproj.CRSIndex`? Our options are:
 
 1. fully encapsulate {py:class}`xproj.CRSIndex`, or
 1. satisfy the ["CRS-aware" protocol](https://xproj.readthedocs.io/en/latest/integration.html) provided by `xproj`, or
@@ -33,9 +33,8 @@ If RasterIndex must track CRS in some form, one way to do that would be to have 
 Thus, `RasterIndex` would be associated with 3 variables instead of 2: `x`, `y`, and `spatial_ref`, for example.
 
 The downside of this approach is that it doesn't compose well with any other Index that would also like to handle the CRS (e.g. {py:class}`xvec.GeometryIndex`).
-The reason is that the Xarray model enforces that one variable is only associated with one Index.
-This restriction is needed because Indexes are responsible for creating associated variables, so we don't want two Indexes to have the ability to modify the same variable.
 For example, `xr.merge([geometries, raster])` where `geometries` has `xvec.GeometryIndex[geometry, spatial_ref]` (square brackets list associated coordinate variable names) and `raster` has `RasterIndex[x, y, spatial_ref]`, would fail because the variable `spatial_ref` is associated with two Indexes of different types.
+This fails because the Xarray model enforces that *one Variable is only associated with only one Index*, in order to prevent different Indexes modifying the same Variable.
 
 ### CRS-aware Index
 
