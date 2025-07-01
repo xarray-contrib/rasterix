@@ -204,6 +204,8 @@ def guess_dims(obj: T_Xarray) -> tuple[str, str]:
         x_dim = "longitude"
         y_dim = "latitude"
     else:
+        x_dim = None
+        y_dim = None
         # look for coordinates with CF attributes
         for coord in obj.coords:
             # make sure to only look in 1D coordinates
@@ -213,12 +215,18 @@ def guess_dims(obj: T_Xarray) -> tuple[str, str]:
             if (obj.coords[coord].attrs.get("axis", "").upper() == "X") or (
                 obj.coords[coord].attrs.get("standard_name", "").lower()
                 in ("longitude", "projection_x_coordinate")
+                or obj.coords[coord].attrs.get("units", "").lower() in ("degrees_east",)
             ):
                 x_dim = coord
             elif (obj.coords[coord].attrs.get("axis", "").upper() == "Y") or (
                 obj.coords[coord].attrs.get("standard_name", "").lower()
                 in ("latitude", "projection_y_coordinate")
+                or obj.coords[coord].attrs.get("units", "").lower() in ("degrees_north",)
             ):
                 y_dim = coord
 
+    if not x_dim or not y_dim:
+        raise ValueError(
+            "Could not guess names of x, y coordinate variables. Please explicitly pass `x_dim` and `y_dim`."
+        )
     return x_dim, y_dim
