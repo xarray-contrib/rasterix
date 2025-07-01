@@ -7,6 +7,9 @@
 caption: Raster Index
 hidden:
 ---
+raster_index/intro
+raster_index/indexing
+raster_index/crs
 raster_index/aligning
 raster_index/combining
 raster_index/design_choices

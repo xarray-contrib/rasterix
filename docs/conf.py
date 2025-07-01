@@ -116,7 +116,7 @@ css_vars = {
     "font-size--small--2": "87.5%",
 }
 html_theme_options = dict(
-    sidebar_hide_name=True,
+    sidebar_hide_name=False,
     light_css_variables=css_vars,
     dark_css_variables=css_vars,
 )
@@ -141,6 +141,7 @@ intersphinx_mapping = {
     "pyproj": ("https://pyproj4.github.io/pyproj/stable/", None),
     "exactextract": ("https://isciences.github.io/exactextract/", None),
     "rasterio": ("https://rasterio.readthedocs.io/en/stable/", None),
+    "xvec": ("https://xvec.readthedocs.io/en/stable/", None),
 }
 
 autosummary_generate = True
