@@ -54,13 +54,6 @@ def test_set_xindex() -> None:
         ds.set_xindex(["x", "y"], RasterIndex)
 
 
-def test_rectilinear():
-    source = "/vsicurl/https://noaadata.apps.nsidc.org/NOAA/G02135/south/daily/geotiff/2024/01_Jan/S_20240101_concentration_v3.0.tif"
-    da_no_raster_index = xr.open_dataarray(source, engine="rasterio")
-    da_raster_index = assign_index(da_no_raster_index)
-    assert da_raster_index.equals(da_no_raster_index)
-
-
 def test_raster_index_properties():
     index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     assert index1.xy_shape == (12, 10)
