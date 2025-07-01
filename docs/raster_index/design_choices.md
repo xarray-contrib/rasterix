@@ -9,23 +9,24 @@ Ultimately, there are no easy answers and tradeoffs to be made.
 
 ## CRS handling
 
-{py:class}`xproj.CRSIndex` is an attempt at providing a building block for CRS handling in the Xarray ecosystem.
+Why do we want CRS handling?
 
+1. We want Xarray to disallow alignment of two Xarray objects with different CRS e.g. `da1 + da2` should fail if `da1`, and `da2` have different CRS.
+1. Support wraparound indexing along the `longitude` dimension ({issue}`26`)
+1. Assign appropriate attributes to the created coordinate variables ({issue}`22`). (e.g. choose between `standard_name: latitude` and `standard_name: projection_y_coordinate`)
+1. more?
+
+{py:class}`xproj.CRSIndex` is an attempt at providing a building block for CRS handling in the Xarray ecosystem that solved problem (1).
+Thus (1) can be handled by assigning {py:class}`xproj.CRSIndex` to the `spatial_ref` variable.
 How might `RasterIndex` integrate with `xproj.CRSIndex`? Our options are:
 
 1. fully encapsulate {py:class}`xproj.CRSIndex`, or
 1. satisfy the ["CRS-aware" protocol](https://xproj.readthedocs.io/en/latest/integration.html) provided by `xproj`, or
 1. simply handle the affine transform and ignore the CRS altogether.
 
-Why do we want CRS handling? We want Xarray to disallow alignment of two Xarray objects with different CRS e.g. `da1 + da2` should fail if `da1`, and `da2` have different CRS. This is enabled by assigning {py:class}`xproj.CRSIndex` to the `spatial_ref` variable.
-
 ### Why should `RasterIndex` be aware of the CRS?
 
-RasterIndex handles indexing and the creation of coordinate variables. With CRS information handy, this would allow us to
-
-1. Support wraparound indexing along the `longitude` dimension ({issue}`26`)
-1. Assign appropriate attributes to the created coordinate variables ({issue}`22`). (e.g. choose between `standard_name: latitude` and `standard_name: projection_y_coordinate`)
-1. more?
+RasterIndex handles indexing and the creation of coordinate variables. Thus it is the natural place to support (2) and (3) in the list above.
 
 ### Why not encapsulate CRSIndex?
 
@@ -34,7 +35,7 @@ Thus, `RasterIndex` would be associated with 3 variables instead of 2: `x`, `y`,
 
 The downside of this approach is that it doesn't compose well with any other Index that would also like to handle the CRS (e.g. {py:class}`xvec.GeometryIndex`).
 For example, `xr.merge([geometries, raster])` where `geometries` has `xvec.GeometryIndex[geometry, spatial_ref]` (square brackets list associated coordinate variable names) and `raster` has `RasterIndex[x, y, spatial_ref]`, would fail because the variable `spatial_ref` is associated with two Indexes of different types.
-This fails because the Xarray model enforces that *one Variable is only associated with only one Index*, in order to prevent different Indexes modifying the same Variable.
+This fails because the Xarray model enforces that _one Variable is only associated with only one Index_, in order to prevent different Indexes modifying the same Variable.
 
 ### CRS-aware Index
 
