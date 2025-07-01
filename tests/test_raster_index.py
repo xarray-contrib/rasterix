@@ -69,6 +69,18 @@ def test_sel_slice():
     assert actual_transform == actual.rio.transform()
     assert actual_transform == (transform * Affine.translation(0, 3))
 
+    reverse = ds.isel(y=slice(None, None, -1))
+    assert_identical(reverse.y, ds.y[::-1])
+
+    reverse = ds.isel(y=slice(8, 5, -1))
+    assert_identical(reverse.y, ds.y[8:5:-1])
+
+    reverse = ds.isel(y=slice(8, None, -1))
+    assert_identical(reverse.y, ds.y[8::-1])
+
+    reverse = ds.isel(y=slice(None, 5, -1))
+    assert_identical(reverse.y, ds.y[:5:-1])
+
 
 def test_crs() -> None:
     index = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
