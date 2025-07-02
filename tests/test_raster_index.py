@@ -75,6 +75,11 @@ def test_raster_index_properties():
     )
     assert index3.as_geotransform(decimals=6) == "0.000000 0.707107 -0.707107 0.000000 0.707107 0.707107"
 
+    index4 = RasterIndex.from_transform(
+        Affine.rotation(45.0), width=12, height=10, x_coord_name="x1", y_coord_name="x2"
+    )
+    assert index4.xy_coord_names == ("x1", "x2")
+
 
 # TODO: parameterize over
 # 1. y points up;
@@ -107,12 +112,51 @@ def test_sel_slice():
     assert_identical(reverse.y, ds.y[:5:-1])
 
 
-def test_crs() -> None:
+def test_crs_generated_attributes() -> None:
     index = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     assert index.crs is None
+    variables = index.create_variables()
+    assert variables["x"].attrs == {}
+    assert variables["y"].attrs == {}
 
     index = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     assert index.crs == pyproj.CRS.from_user_input("epsg:31370")
+    variables = index.create_variables()
+    assert variables["x"].attrs == {
+        "axis": "X",
+        "long_name": "Easting",
+        "standard_name": "projection_x_coordinate",
+        "units": "metre",
+    }
+    assert variables["y"].attrs == {
+        "axis": "Y",
+        "long_name": "Northing",
+        "standard_name": "projection_y_coordinate",
+        "units": "metre",
+    }
+
+    index = RasterIndex.from_transform(
+        Affine.identity(),
+        width=12,
+        height=10,
+        x_dim="lon",
+        y_dim="lat",
+        crs="epsg:4326",
+    )
+    assert index.crs == pyproj.CRS.from_user_input("epsg:4326")
+    variables = index.create_variables()
+    assert variables["lon"].attrs == {
+        "axis": "X",
+        "long_name": "longitude coordinate",
+        "standard_name": "longitude",
+        "units": "degrees_east",
+    }
+    assert variables["lat"].attrs == {
+        "axis": "Y",
+        "long_name": "latitude coordinate",
+        "standard_name": "latitude",
+        "units": "degrees_north",
+    }
 
 
 # asserting (in)equality for both "x" and "y" is redundant but not harmful
