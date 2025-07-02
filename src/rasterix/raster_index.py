@@ -494,6 +494,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         height: int,
         x_dim: str = "x",
         y_dim: str = "y",
+        x_coord_name: str = "xc",
+        y_coord_name: str = "yc",
         crs: CRS | Any | None = None,
     ) -> RasterIndex:
         """Create a RasterIndex from an affine transform and raster dimensions.
@@ -507,10 +509,14 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
             Number of pixels in the x direction.
         height : int
             Number of pixels in the y direction.
-        x_dim : str, default "x"
+        x_dim : str, optional
             Name for the x dimension.
-        y_dim : str, default "y"
+        y_dim : str, optional
             Name for the y dimension.
+        x_coord_name : str, optional
+            Name for the x dimension. For non-rectilinear transforms only.
+        y_coord_name : str, optional
+            Name for the y dimension. For non-rectilinear transforms only.
         crs : :class:`pyproj.crs.CRS` or any, optional
             The coordinate reference system. Any value accepted by
             :meth:`pyproj.crs.CRS.from_user_input`.
@@ -533,6 +539,12 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         >>> from affine import Affine
         >>> transform = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 100.0)
         >>> index = RasterIndex.from_transform(transform, width=100, height=100)
+
+        Create a non-rectilinear index:
+
+        >>> index = RasterIndex.from_transform(
+        ...     Affine.rotation(45), width=100, height=100, x_coord_name="x1", y_coord_name="x2"
+        ... )
         """
         index: WrappedIndex
 
@@ -547,7 +559,15 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
                 AxisAffineTransformIndex(y_transform),
             )
         else:
-            xy_transform = AffineTransform(affine, width, height, x_dim=x_dim, y_dim=y_dim)
+            xy_transform = AffineTransform(
+                affine,
+                width,
+                height,
+                x_dim=x_dim,
+                y_dim=y_dim,
+                x_coord_name=x_coord_name,
+                y_coord_name=y_coord_name,
+            )
             index = CoordinateTransformIndex(xy_transform)
 
         return cls(index, crs=crs)
