@@ -56,8 +56,8 @@ autodoc_typehints = "none"
 codeautolink_concat_default = True
 
 extlinks = {
-    "issue": ("https://github.com/dcherian/rasterix/issues/%s", "GH#%s"),
-    "pr": ("https://github.com/dcherian/rasterix/pull/%s", "PR#%s"),
+    "issue": ("https://github.com/xarray-contrib/rasterix/issues/%s", "GH#%s"),
+    "pr": ("https://github.com/xarray-contrib/rasterix/pull/%s", "PR#%s"),
 }
 
 templates_path = ["_templates"]
@@ -122,7 +122,7 @@ html_theme_options = dict(
 )
 
 html_context = {
-    "github_user": "dcherian",
+    "github_user": "xarray-contrib",
     "github_repo": "rasterix",
     "github_version": "main",
     "doc_path": "doc",
