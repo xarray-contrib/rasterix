@@ -2,32 +2,38 @@ import dask_geopandas as dgpd
 import geodatasets
 import geopandas as gpd
 import pytest
-import rioxarray  # noqa
 import xarray as xr
+import xproj  # noqa
 from xarray.tests import raise_if_dask_computes
 
 from rasterix.rasterize.rasterio import geometry_mask, rasterize
 
 
-@pytest.mark.parametrize("clip", [True, False])
-def test_rasterize(clip):
+@pytest.fixture
+def dataset():
+    ds = xr.tutorial.open_dataset("eraint_uvz")
+    ds = ds.proj.assign_crs(spatial_ref="epsg:4326")
+    ds["spatial_ref"].attrs = ds.proj.crs.to_cf()
+    return ds
+
+
+@pytest.mark.parametrize("clip", [False, True])
+def test_rasterize(clip, dataset):
     fname = "rasterize_snapshot.nc"
     try:
         snapshot = xr.load_dataarray(fname)
     except FileNotFoundError:
-        snapshot = xr.load_dataarray(f"./tests/{fname}")
+        fname = f"./tests/{fname}"
+        snapshot = xr.load_dataarray(fname)
     if clip:
         snapshot = snapshot.sel(latitude=slice(83.25, None))
 
-    ds = xr.tutorial.open_dataset("eraint_uvz")
-    ds = ds.rio.write_crs("epsg:4326")
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
-
     kwargs = dict(xdim="longitude", ydim="latitude", clip=clip)
-    rasterized = rasterize(ds, world[["geometry"]], **kwargs)
+    rasterized = rasterize(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
 
-    chunked = ds.chunk(latitude=119, longitude=-1)
+    chunked = dataset.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
         drasterized = rasterize(chunked, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, drasterized)
@@ -42,7 +48,7 @@ def test_rasterize(clip):
 
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
-def test_geometry_mask(clip, invert):
+def test_geometry_mask(clip, invert, dataset):
     fname = "geometry_mask_snapshot.nc"
     try:
         snapshot = xr.load_dataarray(fname)
@@ -53,15 +59,13 @@ def test_geometry_mask(clip, invert):
     if invert:
         snapshot = ~snapshot
 
-    ds = xr.tutorial.open_dataset("eraint_uvz")
-    ds = ds.rio.write_crs("epsg:4326")
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
 
     kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, invert=invert)
-    rasterized = geometry_mask(ds, world[["geometry"]], **kwargs)
+    rasterized = geometry_mask(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
 
-    chunked = ds.chunk(latitude=119, longitude=-1)
+    chunked = dataset.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
         drasterized = geometry_mask(chunked, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(drasterized, snapshot)

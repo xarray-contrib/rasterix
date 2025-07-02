@@ -9,6 +9,7 @@ import numpy.testing as npt
 import sparse
 import xarray as xr
 import xarray.testing as xrt
+import xproj  # noqa
 from exactextract import exact_extract
 from hypothesis import example, given, settings
 from xarray.tests import raise_if_dask_computes
@@ -16,7 +17,7 @@ from xarray.tests import raise_if_dask_computes
 from rasterix.rasterize.exact import CoverageWeights, coverage, xy_to_raster_source
 
 dataset = xr.tutorial.open_dataset("eraint_uvz").rename({"latitude": "y", "longitude": "x"})
-dataset = dataset.rio.write_crs("epsg:4326")
+dataset = dataset.proj.assign_crs(spatial_ref="epsg:4326")
 world = gpd.read_file(geodatasets.get_path("naturalearth land"))
 XSIZE = dataset.x.size
 YSIZE = dataset.y.size

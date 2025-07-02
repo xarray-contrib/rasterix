@@ -21,6 +21,7 @@ from xproj.typing import CRSAwareIndex
 
 from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, maybe_int, snap_grid
 from rasterix.rioxarray_compat import guess_dims
+from rasterix.utils import get_affine
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
@@ -37,10 +38,14 @@ def assign_index(
 ) -> T_Xarray:
     """Assign a RasterIndex to an Xarray DataArray or Dataset.
 
+    By default, the affine transform is guessed by first looking for a ``GeoTransform`` attribute
+    on a CF "grid mapping" variable (commonly ``"spatial_ref"``). If not present, then the affine is determined from 1D coordinate
+    variables named ``x_dim`` and ``y_dim`` provided to this function.
+
     Parameters
     ----------
     obj : xarray.DataArray or xarray.Dataset
-        The object to assign the index to. Must have a rio accessor with a transform.
+        The object to assign the index to.
     x_dim : str, optional
         Name of the x dimension. If None, will be automatically detected.
     y_dim : str, optional
@@ -53,22 +58,37 @@ def assign_index(
     xarray.DataArray or xarray.Dataset
         The input object with RasterIndex coordinates assigned.
 
+    Notes
+    -----
+    The "grid mapping" variable is determined following the CF conventions:
+
+    - If a DataArray is provided, we look for an attribute named ``"grid_mapping"``.
+    - For a Dataset, we pull the first detected ``"grid_mapping"`` attribute when iterating over data variables.
+
+    The value of this attribute is a variable name containing projection information (commonly ``"spatial_ref"``).
+    We then look for a ``"GeoTransform"`` attribute on this variable (following GDAL convention).
+
+    References
+    ----------
+    - `CF conventions document <http://cfconventions.org/Data/cf-conventions/cf-conventions-1.11/cf-conventions.html#grid-mappings-and-projections>`_.
+    - `GDAL docs on GeoTransform <https://gdal.org/en/stable/tutorials/geotransforms_tut.html>`_.
+
     Examples
     --------
     >>> import xarray as xr
-    >>> import rioxarray  # Required for rio accessor
+    >>> import rioxarray  # Required for reading TIFF
     >>> da = xr.open_dataset("path/to/raster.tif", engine="rasterio")
     >>> indexed_da = assign_index(da)
     """
-    import rioxarray  # noqa
-
     if x_dim is None or y_dim is None:
         guessed_x, guessed_y = guess_dims(obj)
     x_dim = x_dim or guessed_x
     y_dim = y_dim or guessed_y
 
+    affine = get_affine(obj, x_dim=x_dim, y_dim=y_dim, clear_transform=True)
+
     index = RasterIndex.from_transform(
-        obj.rio.transform(),
+        affine,
         width=obj.sizes[x_dim],
         height=obj.sizes[y_dim],
         x_dim=x_dim,
@@ -625,6 +645,15 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
     def transform(self) -> Affine:
         """Affine transform for top-left corners."""
         return self.center_transform() * Affine.translation(-0.5, -0.5)
+
+    def as_geotransform(self, *, decimals: int | None = None) -> str:
+        """Convert the affine transform to a string suitable for saving as the GeoTransform attribute."""
+        gt = self.transform().to_gdal()
+        if decimals is not None:
+            fmt = f".{decimals}f"
+            return " ".join(f"{num:{fmt}}" for num in gt)
+        else:
+            return " ".join(map(str, gt))
 
     def center_transform(self) -> Affine:
         """Affine transform for cell centers."""

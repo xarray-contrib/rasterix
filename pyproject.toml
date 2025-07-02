@@ -43,7 +43,6 @@ test = [
   "pooch",
   "dask-geopandas",
   "rasterio",
-  "rioxarray",
   "exactextract",
   "sparse",
   "netCDF4",
