@@ -11,7 +11,7 @@ This WIP project contains tools to make it easier to analyze raster data with Xa
 It currently has two pieces.
 
 1. `RasterIndex` for indexing using the affine transform recorded in GeoTIFFs.
-1. Dask-aware rasterization wrappers around [`exactextract`](https://github.com/xarray-contrib/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L165), [`rasterio.features.rasterize`](https://github.com/xarray-contrib/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L307), and [`rasterio.features.geometry_mask`](https://github.com/xarray-contrib/rasterix/blob/ec3f51e60e25aa312e6f48c4b22f91bec70413ed/rasterize.py#L472).
+1. Dask-aware rasterization wrappers around `exactextract`, `rasterio.features.rasterize`, and `rasterio.features.geometry_mask`.
 
 Our intent is to provide reusable building blocks for the many sub-ecosystems around: e.g. `rioxarray`, `odc.geo`, etc.
 
