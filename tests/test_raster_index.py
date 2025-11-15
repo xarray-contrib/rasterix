@@ -444,3 +444,181 @@ def test_repr() -> None:
 
     index3 = RasterIndex.from_transform(Affine.identity(), width=12, height=10, crs="epsg:31370")
     assert repr(index3).startswith("RasterIndex(crs=EPSG:31370)")
+
+
+def test_assign_index_with_geotiff_metadata():
+    """Test assign_index with GeoTIFF metadata (model_tiepoint and model_pixel_scale)."""
+    # Example from issue #55
+    # WGS 84 / UTM zone 10N with tiepoint at pixel (0, 0) -> world (323400.0, 4265400.0)
+    # and pixel scale of 30.0 x 30.0 meters
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "model_pixel_scale": [30.0, 30.0, 0.0],
+            "model_tiepoint": [0.0, 0.0, 0.0, 323400.0, 4265400.0, 0.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    # Check that the index was created
+    assert isinstance(result.xindexes["x"], RasterIndex)
+    assert isinstance(result.xindexes["y"], RasterIndex)
+
+    # Verify the affine transform
+    expected_affine = Affine.translation(323400.0, 4265400.0) * Affine.scale(30.0, 30.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+    # Check bbox
+    bbox = result.xindexes["x"].bbox
+    assert bbox.left == 323400.0
+    assert bbox.top == 4265400.0 + 100 * 30.0
+    assert bbox.right == 323400.0 + 100 * 30.0
+    assert bbox.bottom == 4265400.0
+
+    # Verify GeoTIFF metadata attributes are removed
+    assert "model_tiepoint" not in result.attrs
+    assert "model_pixel_scale" not in result.attrs
+
+
+def test_assign_index_with_geotiff_metadata_nonzero_tiepoint():
+    """Test assign_index with GeoTIFF metadata where tiepoint is not at (0, 0)."""
+    # Tiepoint at pixel (10, 20) -> world (500.0, 1000.0)
+    da = xr.DataArray(
+        np.ones((50, 60)),
+        dims=("y", "x"),
+        attrs={
+            "model_pixel_scale": [10.0, 10.0, 0.0],
+            "model_tiepoint": [10.0, 20.0, 0.0, 500.0, 1000.0, 0.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    # Verify the affine transform
+    # c = x - i * scale_x = 500.0 - 10.0 * 10.0 = 400.0
+    # f = y - j * scale_y = 1000.0 - 20.0 * 10.0 = 800.0
+    expected_affine = Affine.translation(400.0, 800.0) * Affine.scale(10.0, 10.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+
+def test_assign_index_with_geotiff_metadata_invalid_z_scale():
+    """Test that assign_index raises error when Z pixel scale is non-zero."""
+    da = xr.DataArray(
+        np.ones((10, 10)),
+        dims=("y", "x"),
+        attrs={
+            "model_pixel_scale": [30.0, 30.0, 10.0],  # Non-zero Z scale
+            "model_tiepoint": [0.0, 0.0, 0.0, 323400.0, 4265400.0, 0.0],
+        },
+    )
+
+    with pytest.raises(AssertionError, match="Z pixel scale must be 0"):
+        assign_index(da)
+
+
+def test_assign_index_with_stac_proj_transform():
+    """Test assign_index with STAC proj:transform attribute."""
+    # STAC proj:transform is [a, b, c, d, e, f] representing affine matrix
+    # Example: 30m resolution, origin at (323400.0, 4268400.0)
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "proj:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    # Check that the index was created
+    assert isinstance(result.xindexes["x"], RasterIndex)
+    assert isinstance(result.xindexes["y"], RasterIndex)
+
+    # Verify the affine transform
+    expected_affine = Affine(30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+    # Verify proj:transform attribute is removed
+    assert "proj:transform" not in result.attrs
+
+
+def test_assign_index_with_stac_proj_transform_9_elements():
+    """Test assign_index with STAC proj:transform as full 9-element array."""
+    # Full 3x3 matrix in row-major order: [a, b, c, d, e, f, 0, 0, 1]
+    da = xr.DataArray(
+        np.ones((50, 60)),
+        dims=("y", "x"),
+        attrs={
+            "proj:transform": [10.0, 0.0, 400.0, 0.0, 10.0, 800.0, 0.0, 0.0, 1.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    # Verify the affine transform (should use first 6 elements)
+    expected_affine = Affine(10.0, 0.0, 400.0, 0.0, 10.0, 800.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+
+def test_assign_index_no_coords_no_metadata():
+    """Test that assign_index raises error when coords are missing and no transform metadata."""
+    da = xr.DataArray(np.ones((10, 10)), dims=("y", "x"))
+
+    with pytest.raises(ValueError, match="do not have explicit coordinate values"):
+        assign_index(da)
+
+
+def test_assign_index_from_coords():
+    """Test assign_index when creating from coordinate arrays."""
+    da = xr.DataArray(
+        np.ones((10, 12)),
+        dims=("y", "x"),
+        coords={"x": np.arange(0.5, 12.5), "y": np.arange(0.5, 10.5)},
+    )
+
+    result = assign_index(da)
+
+    assert isinstance(result.xindexes["x"], RasterIndex)
+    assert isinstance(result.xindexes["y"], RasterIndex)
+
+    # Verify the transform
+    # Coordinates are centered at pixels, so we expect identity transform at pixel corners
+    # x[0] = 0.5, dx = 1.0 -> c = 0.5 - 1.0/2 = 0.0
+    # y[0] = 0.5, dy = 1.0 -> f = 0.5 - 1.0/2 = 0.0 but since y increases down, f = y[-1] - dy/2 = 9.5 - 0.5 = 9.0
+    expected_affine = Affine.translation(0.0, 9.0) * Affine.scale(1.0, 1.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+
+def test_assign_index_dataset():
+    """Test assign_index with a Dataset."""
+    ds = xr.Dataset(
+        {"foo": (("y", "x"), np.ones((10, 12)))},
+        coords={"x": np.arange(0.5, 12.5), "y": np.arange(0.5, 10.5)},
+    )
+
+    result = assign_index(ds)
+
+    assert isinstance(result.xindexes["x"], RasterIndex)
+    assert isinstance(result.xindexes["y"], RasterIndex)
+
+
+def test_assign_index_custom_dims():
+    """Test assign_index with custom dimension names."""
+    da = xr.DataArray(
+        np.ones((10, 12)),
+        dims=("lat", "lon"),
+        coords={"lon": np.arange(0.5, 12.5), "lat": np.arange(0.5, 10.5)},
+    )
+
+    result = assign_index(da, x_dim="lon", y_dim="lat")
+
+    assert isinstance(result.xindexes["lon"], RasterIndex)
+    assert isinstance(result.xindexes["lat"], RasterIndex)
+    assert result.xindexes["lon"].xy_dims == ("lon", "lat")
