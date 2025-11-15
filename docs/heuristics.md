@@ -1,25 +1,28 @@
-# Heuristics
+# `assign_index` Heuristics
 
 This page documents the heuristics and decision-making logic used by rasterix when working with spatial data.
 
 ## Affine Transform Detection in `assign_index`
 
-When calling `assign_index()` to create a `RasterIndex` for an Xarray object, rasterix needs to determine the affine transformation that maps pixel coordinates to spatial coordinates. The function follows a specific priority order when searching for this information.
+When calling {py:func}`assign_index()` to create a `RasterIndex` for an Xarray object, rasterix needs to determine the affine transformation that maps pixel coordinates to spatial coordinates. The function follows a specific priority order when searching for this information.
 
 ### Priority Order
 
-The `get_affine()` function checks for transform information in the following order:
+Rasterix checks for transform information in the following order:
 
-1. **CF Grid Mapping GeoTransform attribute**
-1. **STAC `proj:transform` attribute**
-1. **GeoTIFF metadata** (`model_tiepoint` + `model_pixel_scale`)
-1. **Coordinate arrays** (fallback)
+1. `GeoTransform` attribute on a CF 'grid mapping' variable (commonly `spatial_ref`).
+1. STAC `proj:transform` attribute
+1. GeoTIFF metadata: (`model_tiepoint` and `model_pixel_scale` for now)
 
 Each method is tried in sequence, and the first successful match is used.
 
-### 1. CF Grid Mapping GeoTransform
+If these fail, an index is constructed from explicit coordinate arrays if present.
 
-**Source**: Grid mapping variable's `GeoTransform` attribute
+### 1. `GeoTransform`
+
+```{seealso}
+[GDAL GeoTransform tutorial](https://gdal.org/en/stable/tutorials/geotransforms_tut.html)
+```
 
 The function first looks for a CF conventions "grid mapping" variable (commonly named `spatial_ref`). The grid mapping variable is identified by:
 
@@ -37,11 +40,11 @@ If found, rasterix checks for a `GeoTransform` attribute on this variable, which
 da.coords["spatial_ref"].attrs["GeoTransform"] = "323400.0 30.0 0.0 4265400.0 0.0 30.0"
 ```
 
-**Trace log**: `"Creating affine from GeoTransform attribute"`
-
 ### 2. STAC `proj:transform`
 
-**Source**: DataArray's `proj:transform` attribute
+```{seealso}
+[STAC Projection Extension](https://github.com/stac-extensions/projection)
+```
 
 If no GeoTransform is found, rasterix checks the DataArray's attributes for a STAC projection extension `proj:transform` field. This represents the affine transformation as a flat array.
 
@@ -70,13 +73,11 @@ Where:
 da.attrs["proj:transform"] = [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0]
 ```
 
-**Trace log**: `"Creating affine from STAC proj:transform attribute"`
-
-**References**: [STAC Projection Extension](https://github.com/stac-extensions/projection)
-
 ### 3. GeoTIFF Metadata
 
-**Source**: DataArray's `model_tiepoint` and `model_pixel_scale` attributes
+```{seealso}
+[GeoTIFF specification on coordinate transformations](https://docs.ogc.org/is/19-008r4/19-008r4.html#_geotiff_tags_for_coordinate_transformations)
+```
 
 If no STAC transform is found, rasterix checks for GeoTIFF-style metadata using model tiepoints and pixel scale.
 
@@ -101,9 +102,7 @@ da.attrs["model_pixel_scale"] = [30.0, 30.0, 0.0]
 
 **Trace log**: `"Creating affine from GeoTIFF model_tiepoint and model_pixel_scale attributes"`
 
-### 4. Coordinate Arrays (Fallback)
-
-**Source**: 1D coordinate variables for x and y dimensions
+### 4. Coordinate Arrays
 
 If no metadata is found, rasterix falls back to computing the affine transformation from 1D coordinate arrays.
 
@@ -131,27 +130,6 @@ da = xr.DataArray(
 )
 ```
 
-**Trace log**: `"Creating affine from coordinate arrays x_dim='x' and y_dim='y'"`
-
-### Error Handling
-
-If none of the above methods succeed, `assign_index()` raises a `ValueError`:
-
-```python
-ValueError: Cannot create affine transform: dimensions x_dim='x' and y_dim='y'
-do not have explicit coordinate values and no transform metadata found.
-```
-
-### Attribute Cleanup
-
-When `clear_transform=True` (the default in `assign_index`), the transform attributes are removed after use to avoid duplication:
-
-- `GeoTransform` is deleted from the grid mapping variable
-- `proj:transform` is deleted from the DataArray attributes
-- `model_tiepoint` and `model_pixel_scale` are deleted from the DataArray attributes
-
-This ensures the spatial information is stored in the `RasterIndex` rather than scattered across multiple attributes.
-
 ### Logging
 
 To see which method is being used, enable trace-level logging:
@@ -159,8 +137,8 @@ To see which method is being used, enable trace-level logging:
 ```python
 import logging
 
-logging.basicConfig(level=5)  # TRACE level
-logging.getLogger("rasterix").setLevel(5)
+logging.basicConfig(level=logging.TRACE)
+logging.getLogger("rasterix").setLevel(logging.TRACE)
 ```
 
 This will output messages like:
