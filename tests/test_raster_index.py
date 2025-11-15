@@ -622,3 +622,87 @@ def test_assign_index_custom_dims():
     assert isinstance(result.xindexes["lon"], RasterIndex)
     assert isinstance(result.xindexes["lat"], RasterIndex)
     assert result.xindexes["lon"].xy_dims == ("lon", "lat")
+
+
+def test_raster_index_from_tiepoint_and_scale():
+    """Test RasterIndex.from_tiepoint_and_scale classmethod."""
+    tiepoint = [0.0, 0.0, 0.0, 323400.0, 4265400.0, 0.0]
+    scale = [30.0, 30.0, 0.0]
+
+    index = RasterIndex.from_tiepoint_and_scale(tiepoint=tiepoint, scale=scale, width=100, height=100)
+
+    # Verify the index was created
+    assert isinstance(index, RasterIndex)
+    assert index.xy_shape == (100, 100)
+
+    # Verify the transform
+    expected_affine = Affine.translation(323400.0, 4265400.0) * Affine.scale(30.0, 30.0)
+    assert index.transform() == expected_affine
+
+
+def test_raster_index_from_tiepoint_and_scale_nonzero_tiepoint():
+    """Test from_tiepoint_and_scale with tiepoint not at origin."""
+    tiepoint = [10.0, 20.0, 0.0, 500.0, 1000.0, 0.0]
+    scale = [10.0, 10.0, 0.0]
+
+    index = RasterIndex.from_tiepoint_and_scale(tiepoint=tiepoint, scale=scale, width=60, height=50)
+
+    # Verify the transform
+    # c = x - i * scale_x = 500.0 - 10.0 * 10.0 = 400.0
+    # f = y - j * scale_y = 1000.0 - 20.0 * 10.0 = 800.0
+    expected_affine = Affine.translation(400.0, 800.0) * Affine.scale(10.0, 10.0)
+    assert index.transform() == expected_affine
+
+
+def test_raster_index_from_tiepoint_and_scale_invalid_z():
+    """Test from_tiepoint_and_scale raises error for non-zero Z scale."""
+    tiepoint = [0.0, 0.0, 0.0, 323400.0, 4265400.0, 0.0]
+    scale = [30.0, 30.0, 10.0]  # Non-zero Z scale
+
+    with pytest.raises(AssertionError, match="Z pixel scale must be 0"):
+        RasterIndex.from_tiepoint_and_scale(tiepoint=tiepoint, scale=scale, width=100, height=100)
+
+
+def test_raster_index_from_stac_proj_metadata():
+    """Test RasterIndex.from_stac_proj_metadata classmethod."""
+    metadata = {"proj:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0]}
+
+    index = RasterIndex.from_stac_proj_metadata(metadata, width=100, height=100)
+
+    # Verify the index was created
+    assert isinstance(index, RasterIndex)
+    assert index.xy_shape == (100, 100)
+
+    # Verify the transform
+    expected_affine = Affine(30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0)
+    assert index.transform() == expected_affine
+
+
+def test_raster_index_from_stac_proj_metadata_9_elements():
+    """Test from_stac_proj_metadata with full 9-element transform."""
+    metadata = {"proj:transform": [10.0, 0.0, 400.0, 0.0, 10.0, 800.0, 0.0, 0.0, 1.0]}
+
+    index = RasterIndex.from_stac_proj_metadata(metadata, width=60, height=50)
+
+    # Verify the transform (should use first 6 elements)
+    expected_affine = Affine(10.0, 0.0, 400.0, 0.0, 10.0, 800.0)
+    assert index.transform() == expected_affine
+
+
+def test_raster_index_from_stac_proj_metadata_missing_key():
+    """Test from_stac_proj_metadata raises error when proj:transform is missing."""
+    metadata = {"other_key": "value"}
+
+    with pytest.raises(ValueError, match="metadata must contain 'proj:transform' key"):
+        RasterIndex.from_stac_proj_metadata(metadata, width=100, height=100)
+
+
+def test_raster_index_from_stac_proj_metadata_with_crs():
+    """Test from_stac_proj_metadata with CRS parameter."""
+    metadata = {"proj:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0]}
+
+    index = RasterIndex.from_stac_proj_metadata(metadata, width=100, height=100, crs="epsg:32610")
+
+    # Verify CRS was set
+    assert index.crs is not None
+    assert index.crs.to_epsg() == 32610

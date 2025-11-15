@@ -573,6 +573,147 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         return cls(index, crs=crs)
 
     @classmethod
+    def from_tiepoint_and_scale(
+        cls,
+        *,
+        tiepoint: list[float] | tuple[float, ...],
+        scale: list[float] | tuple[float, ...],
+        width: int,
+        height: int,
+        x_dim: str = "x",
+        y_dim: str = "y",
+        x_coord_name: str = "xc",
+        y_coord_name: str = "yc",
+        crs: CRS | Any | None = None,
+    ) -> RasterIndex:
+        """Create a RasterIndex from GeoTIFF tiepoint and pixel scale metadata.
+
+        Parameters
+        ----------
+        tiepoint : list or tuple
+            GeoTIFF model tiepoint in format [I, J, K, X, Y, Z]
+            where (I, J, K) are pixel coords and (X, Y, Z) are world coords.
+        scale : list or tuple
+            GeoTIFF model pixel scale in format [ScaleX, ScaleY, ScaleZ].
+        width : int
+            Number of pixels in the x direction.
+        height : int
+            Number of pixels in the y direction.
+        x_dim : str, optional
+            Name for the x dimension.
+        y_dim : str, optional
+            Name for the y dimension.
+        x_coord_name : str, optional
+            Name for the x coordinate. For non-rectilinear transforms only.
+        y_coord_name : str, optional
+            Name for the y coordinate. For non-rectilinear transforms only.
+        crs : :class:`pyproj.crs.CRS` or any, optional
+            The coordinate reference system. Any value accepted by
+            :meth:`pyproj.crs.CRS.from_user_input`.
+
+        Returns
+        -------
+        RasterIndex
+            A new RasterIndex object with appropriate internal structure.
+
+        Raises
+        ------
+        AssertionError
+            If ScaleZ is not 0 (only 2D rasters are supported).
+
+        Examples
+        --------
+        Create an index from GeoTIFF metadata:
+
+        >>> tiepoint = [0.0, 0.0, 0.0, 323400.0, 4265400.0, 0.0]
+        >>> scale = [30.0, 30.0, 0.0]
+        >>> index = RasterIndex.from_tiepoint_and_scale(tiepoint=tiepoint, scale=scale, width=100, height=100)
+        """
+        from rasterix.lib import affine_from_tiepoint_and_scale
+
+        affine = affine_from_tiepoint_and_scale(tiepoint, scale)
+        return cls.from_transform(
+            affine,
+            width=width,
+            height=height,
+            x_dim=x_dim,
+            y_dim=y_dim,
+            x_coord_name=x_coord_name,
+            y_coord_name=y_coord_name,
+            crs=crs,
+        )
+
+    @classmethod
+    def from_stac_proj_metadata(
+        cls,
+        metadata: dict,
+        *,
+        width: int,
+        height: int,
+        x_dim: str = "x",
+        y_dim: str = "y",
+        x_coord_name: str = "xc",
+        y_coord_name: str = "yc",
+        crs: CRS | Any | None = None,
+    ) -> RasterIndex:
+        """Create a RasterIndex from STAC projection metadata.
+
+        Parameters
+        ----------
+        metadata : dict
+            Dictionary containing STAC metadata. Must contain a 'proj:transform' key
+            with the affine transformation as a flat array.
+        width : int
+            Number of pixels in the x direction.
+        height : int
+            Number of pixels in the y direction.
+        x_dim : str, optional
+            Name for the x dimension.
+        y_dim : str, optional
+            Name for the y dimension.
+        x_coord_name : str, optional
+            Name for the x coordinate. For non-rectilinear transforms only.
+        y_coord_name : str, optional
+            Name for the y coordinate. For non-rectilinear transforms only.
+        crs : :class:`pyproj.crs.CRS` or any, optional
+            The coordinate reference system. Any value accepted by
+            :meth:`pyproj.crs.CRS.from_user_input`.
+
+        Returns
+        -------
+        RasterIndex
+            A new RasterIndex object with appropriate internal structure.
+
+        Raises
+        ------
+        ValueError
+            If 'proj:transform' is not found in metadata or has invalid format.
+
+        Examples
+        --------
+        Create an index from STAC metadata:
+
+        >>> metadata = {"proj:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0]}
+        >>> index = RasterIndex.from_stac_proj_metadata(metadata, width=100, height=100)
+        """
+        from rasterix.lib import affine_from_stac_proj_metadata
+
+        affine = affine_from_stac_proj_metadata(metadata)
+        if affine is None:
+            raise ValueError("metadata must contain 'proj:transform' key")
+
+        return cls.from_transform(
+            affine,
+            width=width,
+            height=height,
+            x_dim=x_dim,
+            y_dim=y_dim,
+            x_coord_name=x_coord_name,
+            y_coord_name=y_coord_name,
+            crs=crs,
+        )
+
+    @classmethod
     def from_variables(
         cls,
         variables: Mapping[Any, Variable],

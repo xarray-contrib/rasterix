@@ -1,7 +1,7 @@
 import xarray as xr
 from affine import Affine
 
-from rasterix.lib import logger
+from rasterix.lib import affine_from_stac_proj_metadata, affine_from_tiepoint_and_scale, logger
 
 
 def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
@@ -62,45 +62,23 @@ def get_affine(
     attrs = obj.attrs if isinstance(obj, xr.DataArray) else {}
 
     # Try to extract affine from STAC proj:transform
-    if "proj:transform" in attrs:
+    if affine := affine_from_stac_proj_metadata(attrs):
         logger.trace("Creating affine from STAC proj:transform attribute")
-        transform = attrs["proj:transform"]
-        # proj:transform is a 3x3 matrix in row-major order, but typically only 6 elements
-        # [a, b, c, d, e, f, 0, 0, 1] where the affine is constructed from first 6 elements
-        if len(transform) >= 6:
-            a, b, c, d, e, f = transform[:6]
-            if clear_transform:
-                del attrs["proj:transform"]
-            return Affine(a, b, c, d, e, f)
+        if clear_transform:
+            del attrs["proj:transform"]
+        return affine
 
     # Try to extract affine from GeoTIFF model_tiepoint and model_pixel_scale
     if "model_tiepoint" in attrs and "model_pixel_scale" in attrs:
         logger.trace("Creating affine from GeoTIFF model_tiepoint and model_pixel_scale attributes")
-        tiepoint = attrs["model_tiepoint"]
-        pixel_scale = attrs["model_pixel_scale"]
+        affine = affine_from_tiepoint_and_scale(attrs["model_tiepoint"], attrs["model_pixel_scale"])
 
-        # model_tiepoint format: [I, J, K, X, Y, Z]
-        # where (I, J, K) are pixel coords and (X, Y, Z) are world coords
-        # model_pixel_scale format: [ScaleX, ScaleY, ScaleZ]
-        if len(tiepoint) >= 6 and len(pixel_scale) >= 3:
-            i, j, k, x, y, z = tiepoint[:6]
-            scale_x, scale_y, scale_z = pixel_scale[:3]
+        # Clean up GeoTIFF metadata attributes after using them
+        if clear_transform:
+            del attrs["model_tiepoint"]
+            del attrs["model_pixel_scale"]
 
-            # We only support 2D rasters
-            assert scale_z == 0, f"Z pixel scale must be 0 for 2D rasters, got {scale_z}"
-
-            # The tiepoint gives us the world coordinates at pixel (I, J)
-            # Affine transform: x_world = c + i * a, y_world = f + j * e
-            # So: c = x - i * scale_x, f = y - j * scale_y
-            c = x - i * scale_x
-            f = y - j * scale_y
-
-            # Clean up GeoTIFF metadata attributes after using them
-            if clear_transform:
-                del attrs["model_tiepoint"]
-                del attrs["model_pixel_scale"]
-
-            return Affine.translation(c, f) * Affine.scale(scale_x, scale_y)
+        return affine
 
     # Fall back to computing from coordinate arrays
     logger.trace(f"Creating affine from coordinate arrays {x_dim=!r} and {y_dim=!r}")
