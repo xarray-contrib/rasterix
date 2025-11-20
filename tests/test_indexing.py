@@ -2,14 +2,17 @@
 """Property tests comparing RasterIndex with PandasIndex for indexing operations."""
 
 from collections.abc import Hashable
+from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 import xarray as xr
 from affine import Affine
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, given, note, settings
 from hypothesis import strategies as st
 from hypothesis.extra import numpy as npst
+from xarray.core.indexes import Indexes
 
 from rasterix import RasterIndex
 
@@ -90,7 +93,12 @@ def pandas_da(raster_da):
 
 @st.composite
 def basic_indexers(
-    draw, /, *, sizes: dict[Hashable, int], min_dims: int = 0, max_dims: int | None = None
+    draw,
+    /,
+    *,
+    sizes: dict[Hashable, int],
+    min_dims: int = 0,
+    max_dims: int | None = None,
 ) -> dict[Hashable, int | slice]:
     """Generate basic indexers using hypothesis.extra.numpy.basic_indices.
 
@@ -142,15 +150,7 @@ def basic_indexers(
 
 
 @st.composite
-def basic_label_indexers(
-    draw,
-    /,
-    *,
-    sizes: dict[Hashable, int],
-    coord_values_map: dict[Hashable, np.ndarray],
-    min_dims: int = 0,
-    max_dims: int | None = None,
-) -> dict[Hashable, float | slice]:
+def basic_label_indexers(draw, /, *, indexes: Indexes) -> dict[Hashable, float | slice]:
     """Generate label-based indexers by converting position indexers to labels.
 
     This works in label space by using the coordinate Index values.
@@ -159,14 +159,8 @@ def basic_label_indexers(
     ----------
     draw : callable
         The Hypothesis draw function (automatically provided by @st.composite).
-    sizes : dict[Hashable, int]
-        Dictionary mapping dimension names to their sizes.
-    coord_values_map : dict[Hashable, np.ndarray]
-        Dictionary mapping dimension names to their coordinate label values.
-    min_dims : int, optional
-        Minimum dimensionality of the generated index. Default is 0.
-    max_dims : int or None, optional
-        Maximum dimensionality of the generated index. Default is None (no limit).
+    indexes : Indexes
+        Dictionary mapping dimension names to their associated indexes
 
     Returns
     -------
@@ -174,32 +168,35 @@ def basic_label_indexers(
         Label-based indexers as a dict with keys from sizes.keys().
         Values are either float (for scalar labels) or slice (for label ranges).
     """
-    # First draw a positional indexer
-    pos_indexer = draw(basic_indexers(sizes=sizes, min_dims=min_dims, max_dims=max_dims))
+    idxs = indexes.get_unique()
+    assert all(isinstance(idx, xr.indexes.PandasIndex) for idx in idxs)
 
-    label_indexer = {}
+    # FIXME: this should be indexes.sizes!
+    sizes = indexes.dims
 
-    for dim, idx in pos_indexer.items():
-        coord_values = coord_values_map[dim]
+    pos_indexer = draw(basic_indexers(sizes=sizes))
+    pdindexes = indexes.to_pandas_indexes()
 
-        if isinstance(idx, slice):
-            # Convert slice positions to slice labels
-            start = None if idx.start is None else coord_values[idx.start]
-            # For stop, we need the label just past the last included index
-            if idx.stop is None:
-                stop = None
-            else:
-                stop_idx = idx.stop - 1 if idx.stop > 0 else idx.stop
-                if stop_idx >= len(coord_values):
-                    stop = None
-                else:
-                    stop = coord_values[stop_idx]
-            label_indexer[dim] = slice(start, stop, idx.step)
+    def pos_to_label_indexer(idx: pd.Index, idxr: int | slice) -> Any:
+        if isinstance(idxr, slice):
+            return slice(
+                None if idxr.start is None else idx[idxr.start],
+                # FIXME: This will never go past the label range
+                None if idxr.stop is None else idx[min(idxr.stop, idx.size - 1)],
+            )
         else:
-            # Convert single position to label (int case)
-            if 0 <= idx < len(coord_values):
-                label_indexer[dim] = float(coord_values[idx])
+            val = idx[idxr]
 
+            if st.booleans():
+                try:
+                    # pass python scalars occasionally
+                    val = val.item()
+                except Exception:
+                    note(f"casting {val!r} to item() failed")
+                    pass
+            return val
+
+    label_indexer = {dim: pos_to_label_indexer(pdindexes[dim], idx) for dim, idx in pos_indexer.items()}
     return label_indexer
 
 
@@ -217,18 +214,20 @@ def test_isel_basic_indexing_equivalence(data, raster_da, pandas_da):
 
 
 @given(data=st.data())
-@settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(
+    deadline=None,
+    max_examples=200,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
 def test_sel_basic_indexing_equivalence(data, raster_da, pandas_da):
     """Test that isel produces identical results for RasterIndex and PandasIndex."""
-    # Get sizes from the DataArray
-    sizes = dict(raster_da.sizes)
+    indexers = data.draw(basic_label_indexers(indexes=pandas_da.xindexes))
 
-    indexers = data.draw(basic_label_indexers(sizes=sizes))
-
-    # Test
-    result_raster = raster_da.isel(indexers)
-    result_pandas = pandas_da.isel(indexers)
-
+    result_raster = raster_da.sel(
+        indexers,
+        method=("nearest" if any(np.isscalar(idxr) for idxr in indexers.values()) else None),
+    )
+    result_pandas = pandas_da.sel(indexers)
     xr.testing.assert_identical(result_raster, result_pandas)
 
 
@@ -243,7 +242,8 @@ def test_simple_isel(raster_da, pandas_da):
     xr.testing.assert_identical(raster_da.isel(x=slice(2, 5)), pandas_da.isel(x=slice(2, 5)))
     xr.testing.assert_identical(raster_da.isel(y=slice(1, 4)), pandas_da.isel(y=slice(1, 4)))
     xr.testing.assert_identical(
-        raster_da.isel(x=slice(2, 5), y=slice(1, 4)), pandas_da.isel(x=slice(2, 5), y=slice(1, 4))
+        raster_da.isel(x=slice(2, 5), y=slice(1, 4)),
+        pandas_da.isel(x=slice(2, 5), y=slice(1, 4)),
     )
 
     # Array indexing
