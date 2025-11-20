@@ -73,22 +73,31 @@ def raster_da():
 @pytest.fixture
 def pandas_da(raster_da):
     """Create a DataArray with PandasIndex by converting from raster_da."""
-    # Get the coordinate values from RasterIndex
     x_values = raster_da.x.values
     y_values = raster_da.y.values
-
-    # Create new DataArray with PandasIndex coordinates
     da = xr.DataArray(
-        raster_da.values,
-        dims=("y", "x"),
-        coords={
-            "x": ("x", x_values),
-            "y": ("y", y_values),
-        },
-        name="data",
+        raster_da.values, dims=raster_da.dims, coords={"x": x_values, "y": y_values}, name="data"
     )
-
     return da
+
+
+def pos_to_label_indexer(idx: pd.Index, idxr: int | slice) -> Any:
+    if isinstance(idxr, slice):
+        return slice(
+            None if idxr.start is None else idx[idxr.start],
+            # FIXME: This will never go past the label range
+            None if idxr.stop is None else idx[min(idxr.stop, idx.size - 1)],
+        )
+    else:
+        val = idx[idxr]
+        if st.booleans():
+            try:
+                # pass python scalars occasionally
+                val = val.item()
+            except Exception:
+                note(f"casting {val!r} to item() failed")
+                pass
+        return val
 
 
 @st.composite
@@ -177,25 +186,6 @@ def basic_label_indexers(draw, /, *, indexes: Indexes) -> dict[Hashable, float |
     pos_indexer = draw(basic_indexers(sizes=sizes))
     pdindexes = indexes.to_pandas_indexes()
 
-    def pos_to_label_indexer(idx: pd.Index, idxr: int | slice) -> Any:
-        if isinstance(idxr, slice):
-            return slice(
-                None if idxr.start is None else idx[idxr.start],
-                # FIXME: This will never go past the label range
-                None if idxr.stop is None else idx[min(idxr.stop, idx.size - 1)],
-            )
-        else:
-            val = idx[idxr]
-
-            if st.booleans():
-                try:
-                    # pass python scalars occasionally
-                    val = val.item()
-                except Exception:
-                    note(f"casting {val!r} to item() failed")
-                    pass
-            return val
-
     label_indexer = {dim: pos_to_label_indexer(pdindexes[dim], idx) for dim, idx in pos_indexer.items()}
     return label_indexer
 
@@ -228,6 +218,10 @@ def test_sel_basic_indexing_equivalence(data, raster_da, pandas_da):
         method=("nearest" if any(np.isscalar(idxr) for idxr in indexers.values()) else None),
     )
     result_pandas = pandas_da.sel(indexers)
+
+    if all(isinstance(idxr, slice) for idxr in indexers.values()):
+        assert all(isinstance(idx, RasterIndex) for idx in result_raster.xindexes.get_unique())
+
     xr.testing.assert_identical(result_raster, result_pandas)
 
 
