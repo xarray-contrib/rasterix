@@ -81,13 +81,16 @@ def pandas_da(raster_da):
     return da
 
 
-def pos_to_label_indexer(idx: pd.Index, idxr: int | slice) -> Any:
+def pos_to_label_indexer(idx: pd.Index, idxr: int | slice | np.ndarray) -> Any:
     if isinstance(idxr, slice):
         return slice(
             None if idxr.start is None else idx[idxr.start],
             # FIXME: This will never go past the label range
             None if idxr.stop is None else idx[min(idxr.stop, idx.size - 1)],
         )
+    elif isinstance(idxr, np.ndarray):
+        # Convert array of position indices to array of label values
+        return idx[idxr].values
     else:
         val = idx[idxr]
         if st.booleans():
@@ -131,9 +134,7 @@ def basic_indexers(
     all_dims = list(sizes.keys())
 
     # Determine how many dimensions to index
-    if max_dims is None:
-        max_dims = len(all_dims)
-    num_dims = draw(st.integers(min_value=min_dims, max_value=min(max_dims, len(all_dims))))
+    num_dims = draw(st.integers(min_value=min_dims, max_value=min(max_dims or len(all_dims), len(all_dims))))
 
     # Randomly select which dimensions to index
     selected_dims = draw(st.permutations(all_dims).map(lambda x: x[:num_dims]))
@@ -184,6 +185,93 @@ def basic_label_indexers(draw, /, *, indexes: Indexes) -> dict[Hashable, float |
     sizes = indexes.dims
 
     pos_indexer = draw(basic_indexers(sizes=sizes))
+    pdindexes = indexes.to_pandas_indexes()
+
+    label_indexer = {dim: pos_to_label_indexer(pdindexes[dim], idx) for dim, idx in pos_indexer.items()}
+    return label_indexer
+
+
+@st.composite
+def outer_array_indexers(
+    draw,
+    /,
+    *,
+    sizes: dict[Hashable, int],
+    min_dims: int = 0,
+    max_dims: int | None = None,
+) -> dict[Hashable, np.ndarray]:
+    """Generate outer array indexers (vectorized/orthogonal indexing).
+
+    Parameters
+    ----------
+    draw : callable
+        The Hypothesis draw function (automatically provided by @st.composite).
+    sizes : dict[Hashable, int]
+        Dictionary mapping dimension names to their sizes.
+    min_dims : int, optional
+        Minimum number of dimensions to index. Default is 0.
+    max_dims : int or None, optional
+        Maximum number of dimensions to index. Default is None (no limit).
+
+    Returns
+    -------
+    dict[Hashable, np.ndarray]
+        Indexers as a dict with keys randomly selected from sizes.keys().
+        Values are 1D numpy arrays of integer indices for each dimension.
+    """
+    # Get all dimension names
+    all_dims = list(sizes.keys())
+
+    # Determine how many dimensions to index
+    num_dims = draw(st.integers(min_value=min_dims, max_value=min(max_dims or len(all_dims), len(all_dims))))
+
+    # Randomly select which dimensions to index
+    selected_dim_names = draw(st.permutations(all_dims).map(lambda x: x[:num_dims]))
+    selected_dims = {dim: sizes[dim] for dim in selected_dim_names}
+
+    # Generate array indexers for each selected dimension
+    result = {}
+    for dim, size in selected_dims.items():
+        # Generate array of valid indices for this dimension
+        # Use strategy for shape: at least 2 elements to avoid scalar-like behavior
+        indices = draw(
+            npst.arrays(
+                dtype=np.int64,
+                shape=st.integers(min_value=2, max_value=min(size, 10)),
+                elements=st.integers(min_value=0, max_value=size - 1),
+            )
+        )
+        result[dim] = indices
+
+    return result
+
+
+@st.composite
+def outer_array_label_indexers(draw, /, *, indexes: Indexes) -> dict[Hashable, np.ndarray]:
+    """Generate label-based outer array indexers by converting position indexers to labels.
+
+    This works in label space by using the coordinate Index values.
+
+    Parameters
+    ----------
+    draw : callable
+        The Hypothesis draw function (automatically provided by @st.composite).
+    indexes : Indexes
+        Dictionary mapping dimension names to their associated indexes
+
+    Returns
+    -------
+    dict[Hashable, np.ndarray]
+        Label-based indexers as a dict with keys from indexes.
+        Values are numpy arrays of label values for each dimension.
+    """
+    idxs = indexes.get_unique()
+    assert all(isinstance(idx, xr.indexes.PandasIndex) for idx in idxs)
+
+    # FIXME: this should be indexes.sizes!
+    sizes = indexes.dims
+
+    pos_indexer = draw(outer_array_indexers(sizes=sizes))
     pdindexes = indexes.to_pandas_indexes()
 
     label_indexer = {dim: pos_to_label_indexer(pdindexes[dim], idx) for dim, idx in pos_indexer.items()}
@@ -243,3 +331,32 @@ def test_simple_isel(raster_da, pandas_da):
     # Array indexing
     xr.testing.assert_identical(raster_da.isel(x=[0, 2, 4]), pandas_da.isel(x=[0, 2, 4]))
     xr.testing.assert_identical(raster_da.isel(y=[1, 3]), pandas_da.isel(y=[1, 3]))
+
+
+@given(data=st.data())
+@settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_outer_array_indexing(data, raster_da, pandas_da):
+    """Test that outer array indexing produces identical results for RasterIndex and PandasIndex."""
+    sizes = dict(raster_da.sizes)
+    indexers = data.draw(outer_array_indexers(sizes=sizes))
+
+    result_raster = raster_da.isel(indexers)
+    result_pandas = pandas_da.isel(indexers)
+
+    xr.testing.assert_identical(result_raster, result_pandas)
+
+
+@given(data=st.data())
+@settings(
+    deadline=None,
+    max_examples=200,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+def test_outer_array_label_indexing(data, raster_da, pandas_da):
+    """Test that outer array label indexing produces identical results for RasterIndex and PandasIndex."""
+    indexers = data.draw(outer_array_label_indexers(indexes=pandas_da.xindexes))
+
+    result_raster = raster_da.sel(indexers, method="nearest")
+    result_pandas = pandas_da.sel(indexers, method="nearest")
+
+    xr.testing.assert_identical(result_raster, result_pandas)
