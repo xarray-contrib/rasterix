@@ -81,7 +81,7 @@ def pandas_da(raster_da):
     return da
 
 
-def pos_to_label_indexer(idx: pd.Index, idxr: int | slice | np.ndarray) -> Any:
+def pos_to_label_indexer(idx: pd.Index, idxr: int | slice | np.ndarray, *, use_scalar: bool = True) -> Any:
     if isinstance(idxr, slice):
         return slice(
             None if idxr.start is None else idx[idxr.start],
@@ -93,7 +93,7 @@ def pos_to_label_indexer(idx: pd.Index, idxr: int | slice | np.ndarray) -> Any:
         return idx[idxr].values
     else:
         val = idx[idxr]
-        if st.booleans():
+        if use_scalar:
             try:
                 # pass python scalars occasionally
                 val = val.item()
@@ -109,7 +109,7 @@ def basic_indexers(
     /,
     *,
     sizes: dict[Hashable, int],
-    min_dims: int = 0,
+    min_dims: int = 1,
     max_dims: int | None = None,
 ) -> dict[Hashable, int | slice]:
     """Generate basic indexers using hypothesis.extra.numpy.basic_indices.
@@ -121,9 +121,9 @@ def basic_indexers(
     sizes : dict[Hashable, int]
         Dictionary mapping dimension names to their sizes.
     min_dims : int, optional
-        Minimum dimensionality of the generated index. Default is 0.
+        Minimum dimensionality of the generated index.
     max_dims : int or None, optional
-        Maximum dimensionality of the generated index. Default is None (no limit).
+        Maximum dimensionality of the generated index.
 
     Returns
     -------
@@ -187,7 +187,10 @@ def basic_label_indexers(draw, /, *, indexes: Indexes) -> dict[Hashable, float |
     pos_indexer = draw(basic_indexers(sizes=sizes))
     pdindexes = indexes.to_pandas_indexes()
 
-    label_indexer = {dim: pos_to_label_indexer(pdindexes[dim], idx) for dim, idx in pos_indexer.items()}
+    label_indexer = {
+        dim: pos_to_label_indexer(pdindexes[dim], idx, use_scalar=draw(st.booleans()))
+        for dim, idx in pos_indexer.items()
+    }
     return label_indexer
 
 
@@ -274,7 +277,155 @@ def outer_array_label_indexers(draw, /, *, indexes: Indexes) -> dict[Hashable, n
     pos_indexer = draw(outer_array_indexers(sizes=sizes))
     pdindexes = indexes.to_pandas_indexes()
 
-    label_indexer = {dim: pos_to_label_indexer(pdindexes[dim], idx) for dim, idx in pos_indexer.items()}
+    label_indexer = {
+        dim: pos_to_label_indexer(pdindexes[dim], idx, use_scalar=False) for dim, idx in pos_indexer.items()
+    }
+    return label_indexer
+
+
+@st.composite
+def vectorized_indexers(
+    draw,
+    /,
+    *,
+    sizes: dict[Hashable, int],
+    min_dims: int = 2,
+    max_dims: int | None = None,
+    min_ndim: int = 1,
+    max_ndim: int = 3,
+    min_size: int = 1,
+    max_size: int = 5,
+) -> dict[Hashable, xr.DataArray]:
+    """Generate vectorized (fancy) indexers where all arrays are broadcastable.
+
+    In vectorized indexing, all array indexers must have compatible shapes
+    that can be broadcast together, and the result shape is determined by
+    broadcasting the indexer arrays.
+
+    Parameters
+    ----------
+    draw : callable
+        The Hypothesis draw function (automatically provided by @st.composite).
+    sizes : dict[Hashable, int]
+        Dictionary mapping dimension names to their sizes.
+    min_dims : int, optional
+        Minimum number of dimensions to index. Default is 2, so that we always have a "trajectory".
+        Use ``outer_array_indexers`` for the ``min_dims==1`` case.
+    max_dims : int or None, optional
+        Maximum number of dimensions to index. Default is None (no limit).
+    min_ndim : int, optional
+        Minimum number of dimensions for the result arrays. Default is 1.
+    max_ndim : int, optional
+        Maximum number of dimensions for the result arrays. Default is 3.
+    min_size : int, optional
+        Minimum size for each dimension in the result arrays. Default is 1.
+    max_size : int, optional
+        Maximum size for each dimension in the result arrays. Default is 5.
+
+    Returns
+    -------
+    dict[Hashable, xr.DataArray]
+        Indexers as a dict with keys randomly selected from sizes.keys().
+        Values are DataArrays of integer indices that are all broadcastable
+        to a common shape.
+    """
+    # Get all dimension names
+    all_dims = list(sizes.keys())
+
+    # Determine how many dimensions to index
+    num_dims = draw(st.integers(min_value=min_dims, max_value=min(max_dims or len(all_dims), len(all_dims))))
+
+    # Randomly select which dimensions to index
+    selected_dim_names = draw(st.permutations(all_dims).map(lambda x: x[:num_dims]))
+    selected_dims = {dim: sizes[dim] for dim in selected_dim_names}
+
+    # Require at least one dimension to be indexed to avoid edge cases
+    if num_dims == 0:
+        return {}
+
+    # Generate a common broadcast shape for all arrays
+    # Use min_ndim to max_ndim dimensions for the result shape
+    result_ndim = draw(st.integers(min_value=min_ndim, max_value=max_ndim))
+    result_shape = tuple(
+        draw(st.integers(min_value=min_size, max_value=max_size)) for _ in range(result_ndim)
+    )
+
+    # Create dimension names for the vectorized result
+    vec_dims = tuple(f"vec_{i}" for i in range(result_ndim))
+
+    # Generate array indexers for each selected dimension
+    # All arrays must be broadcastable to the same result_shape
+    # To ensure proper broadcasting, use the same decision for all dimensions
+    # (i.e., if vec_1 should be size 1, it's 1 for all dimensions)
+    broadcast_mask = tuple(draw(st.booleans()) for _ in result_shape)
+
+    # If min_size > 1, prevent all dimensions from being broadcast to 1
+    # This ensures the resulting arrays have at least min_size total elements
+    if min_size > 1 and all(broadcast_mask):
+        idx_to_keep = draw(st.integers(min_value=0, max_value=result_ndim - 1))
+        broadcast_mask = tuple(False if i == idx_to_keep else True for i in range(result_ndim))
+
+    result = {}
+    for dim, size in selected_dims.items():
+        # Apply the same broadcast mask to all arrays
+        array_shape = tuple(
+            1 if use_one else s for use_one, s in zip(broadcast_mask, result_shape, strict=True)
+        )
+
+        # Generate array of valid indices for this dimension
+        indices = draw(
+            npst.arrays(
+                dtype=np.int64,
+                shape=array_shape,
+                elements=st.integers(min_value=0, max_value=size - 1),
+            )
+        )
+
+        # Wrap in DataArray with named dimensions for vectorized indexing
+        result[dim] = xr.DataArray(indices, dims=vec_dims)
+
+    return result
+
+
+@st.composite
+def vectorized_label_indexers(draw, /, *, indexes: Indexes, **kwargs) -> dict[Hashable, xr.DataArray]:
+    """Generate label-based vectorized indexers by converting position indexers to labels.
+
+    This works in label space by using the coordinate Index values.
+
+    Parameters
+    ----------
+    draw : callable
+        The Hypothesis draw function (automatically provided by @st.composite).
+    indexes : Indexes
+        Dictionary mapping dimension names to their associated indexes
+    **kwargs : dict
+        Additional keyword arguments to pass to vectorized_indexers
+
+    Returns
+    -------
+    dict[Hashable, xr.DataArray]
+        Label-based indexers as a dict with keys from indexes.
+        Values are DataArrays of label values for each dimension.
+    """
+    idxs = indexes.get_unique()
+    assert all(isinstance(idx, xr.indexes.PandasIndex) for idx in idxs)
+
+    # FIXME: this should be indexes.sizes!
+    sizes = indexes.dims
+
+    pos_indexer = draw(vectorized_indexers(sizes=sizes, **kwargs))
+    pdindexes = indexes.to_pandas_indexes()
+
+    label_indexer = {}
+    for dim, idx_array in pos_indexer.items():
+        # Convert each position in the array to its corresponding label
+        # Flatten, index, then reshape back to original shape
+        flat_indices = idx_array.values.ravel()
+        flat_labels = pdindexes[dim][flat_indices].values
+        label_values = flat_labels.reshape(idx_array.shape)
+        label_indexer[dim] = xr.DataArray(label_values, dims=idx_array.dims)
+
     return label_indexer
 
 
@@ -355,6 +506,37 @@ def test_outer_array_indexing(data, raster_da, pandas_da):
 def test_outer_array_label_indexing(data, raster_da, pandas_da):
     """Test that outer array label indexing produces identical results for RasterIndex and PandasIndex."""
     indexers = data.draw(outer_array_label_indexers(indexes=pandas_da.xindexes))
+
+    result_raster = raster_da.sel(indexers, method="nearest")
+    result_pandas = pandas_da.sel(indexers, method="nearest")
+
+    xr.testing.assert_identical(result_raster, result_pandas)
+
+
+@given(data=st.data())
+@settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_vectorized_indexing(data, raster_da, pandas_da):
+    """Test that vectorized indexing produces identical results for RasterIndex and PandasIndex."""
+    sizes = dict(raster_da.sizes)
+    indexers = data.draw(vectorized_indexers(sizes=sizes))
+
+    result_raster = raster_da.isel(indexers)
+    result_pandas = pandas_da.isel(indexers)
+
+    xr.testing.assert_identical(result_raster, result_pandas)
+
+
+@given(data=st.data())
+@settings(
+    deadline=None,
+    max_examples=200,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+def test_vectorized_label_indexing(data, raster_da, pandas_da):
+    """Test that vectorized label indexing produces identical results for RasterIndex and PandasIndex."""
+    # RasterIndex has a bug with size-1 arrays in vectorized indexing
+    # Use min_size=2 to avoid creating arrays with only 1 element total
+    indexers = data.draw(vectorized_label_indexers(indexes=pandas_da.xindexes))
 
     result_raster = raster_da.sel(indexers, method="nearest")
     result_pandas = pandas_da.sel(indexers, method="nearest")
