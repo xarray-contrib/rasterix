@@ -408,6 +408,26 @@ def test_align():
         aligned = xr.align(*datasets, join="exact")
 
 
+def test_broadcast() -> None:
+    index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
+    ds1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
+    xr.broadcast(ds1, ds1)
+
+    # identical index
+    ds2 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
+    xr.broadcast(ds1, ds2)
+
+    # use two index objects to avoid any identity checks
+    index2 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
+    ds2 = xr.Dataset(coords=xr.Coordinates.from_xindex(index2))
+    xr.broadcast(ds1, ds2)
+
+    xr.broadcast(ds1.x, ds2.x)
+    xr.broadcast(ds1.y, ds2.y)
+    xr.broadcast(ds1.x, ds2.y)
+    xr.broadcast(ds2.x, ds1.y)
+
+
 def test_repr_inline() -> None:
     index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     ds1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
