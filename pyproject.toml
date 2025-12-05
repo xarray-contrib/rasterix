@@ -30,7 +30,7 @@ dependencies = [
     "pandas>=2",
     "numpy>=2",
     "xproj>=0.2.0",
-    "xarray @ git+https://github.com/dcherian/xarray.git@fix-coord-transform-indexing",
+    "xarray>=2025",
 ]
 dynamic=["version"]
 
@@ -47,6 +47,7 @@ test = [
   "sparse",
   "netCDF4",
   "hypothesis",
+  "xarray @ git+https://github.com/dcherian/xarray.git@fix-coord-transform-indexing",
 ]
 docs = [
   "geodatasets",
