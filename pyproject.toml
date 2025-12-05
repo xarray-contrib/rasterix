@@ -30,7 +30,7 @@ dependencies = [
     "pandas>=2",
     "numpy>=2",
     "xproj>=0.2.0",
-    "xarray>=2025",
+    "xarray @ git+https://github.com/dcherian/xarray.git@fix-coord-transform-indexing",
 ]
 dynamic=["version"]
 
@@ -74,6 +74,9 @@ docs = [
 
 [tool.hatch]
 version.source = "vcs"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build]
 hooks.vcs.version-file = "src/rasterix/_version.py"
