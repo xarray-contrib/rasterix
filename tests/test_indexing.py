@@ -88,7 +88,7 @@ def pandas_da(raster_da):
 
 
 @given(data=st.data())
-@settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_isel_basic_indexing_equivalence(data, raster_da, pandas_da):
     """Test that isel produces identical results for RasterIndex and PandasIndex."""
     sizes = dict(raster_da.sizes)
@@ -103,7 +103,6 @@ def test_isel_basic_indexing_equivalence(data, raster_da, pandas_da):
 @given(data=st.data())
 @settings(
     deadline=None,
-    max_examples=200,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_sel_basic_indexing_equivalence(data, raster_da, pandas_da):
@@ -143,7 +142,7 @@ def test_simple_isel(raster_da, pandas_da):
 
 
 @given(data=st.data())
-@settings(max_examples=200, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_outer_array_indexing(data, raster_da, pandas_da):
     """Test that outer array indexing produces identical results for RasterIndex and PandasIndex."""
     sizes = dict(raster_da.sizes)
@@ -158,16 +157,13 @@ def test_outer_array_indexing(data, raster_da, pandas_da):
 @given(data=st.data())
 @settings(
     deadline=None,
-    max_examples=200,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_outer_array_label_indexing(data, raster_da, pandas_da):
     """Test that outer array label indexing produces identical results for RasterIndex and PandasIndex."""
     indexers = data.draw(outer_array_label_indexers(indexes=pandas_da.xindexes))
-
     result_raster = raster_da.sel(indexers, method="nearest")
     result_pandas = pandas_da.sel(indexers, method="nearest")
-
     xr.testing.assert_identical(result_raster, result_pandas)
 
 
@@ -177,26 +173,19 @@ def test_vectorized_indexing(data, raster_da, pandas_da):
     """Test that vectorized indexing produces identical results for RasterIndex and PandasIndex."""
     sizes = dict(raster_da.sizes)
     indexers = data.draw(vectorized_indexers(sizes=sizes))
-
     result_raster = raster_da.isel(indexers)
     result_pandas = pandas_da.isel(indexers)
-
     xr.testing.assert_identical(result_raster, result_pandas)
 
 
 @given(data=st.data())
 @settings(
     deadline=None,
-    max_examples=200,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_vectorized_label_indexing(data, raster_da, pandas_da):
     """Test that vectorized label indexing produces identical results for RasterIndex and PandasIndex."""
-    # RasterIndex has a bug with size-1 arrays in vectorized indexing
-    # Use min_size=2 to avoid creating arrays with only 1 element total
     indexers = data.draw(vectorized_label_indexers(indexes=pandas_da.xindexes))
-
     result_raster = raster_da.sel(indexers, method="nearest")
     result_pandas = pandas_da.sel(indexers, method="nearest")
-
     xr.testing.assert_identical(result_raster, result_pandas)
