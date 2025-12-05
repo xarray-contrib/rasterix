@@ -310,17 +310,20 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
     def sel(self, labels, method=None, tolerance=None):
         coord_name = self.axis_transform.coord_name
         label = labels[coord_name]
-
+        transform = self.axis_transform
         if isinstance(label, slice):
-            if label.start is None:
-                label = slice(0, label.stop, label.step)
+            label = slice(
+                label.start or transform.forward({coord_name: 0})[coord_name],
+                label.stop or transform.forward({coord_name: transform.size})[coord_name],
+                label.step,
+            )
             if label.step is None:
                 # continuous interval slice indexing (preserves the index)
                 pos = self.transform.reverse({coord_name: np.array([label.start, label.stop])})
                 # np.round rounds to even, this way we round upwards
                 pos = np.floor(pos[self.dim] + 0.5).astype("int")
                 new_start = max(pos[0], 0)
-                new_stop = min(pos[1], self.axis_transform.size)
+                new_stop = min(pos[1] + 1, self.axis_transform.size)
                 return IndexSelResult({self.dim: slice(new_start, new_stop)})
             else:
                 # otherwise convert to basic (array) indexing
