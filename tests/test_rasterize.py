@@ -6,7 +6,8 @@ import xarray as xr
 import xproj  # noqa
 from xarray.tests import raise_if_dask_computes
 
-from rasterix.rasterize.rasterio import geometry_mask, rasterize
+from rasterix.rasterize import geometry_mask, rasterize
+from rasterix.rasterize.rasterio import geometry_clip
 
 
 @pytest.fixture
@@ -18,7 +19,7 @@ def dataset():
 
 
 @pytest.mark.parametrize("clip", [False, True])
-def test_rasterize(clip, dataset):
+def test_rasterize(clip, engine, dataset):
     fname = "rasterize_snapshot.nc"
     try:
         snapshot = xr.load_dataarray(fname)
@@ -29,7 +30,7 @@ def test_rasterize(clip, dataset):
         snapshot = snapshot.sel(latitude=slice(83.25, None))
 
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
-    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip)
+    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, engine=engine)
     rasterized = rasterize(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
 
@@ -48,7 +49,7 @@ def test_rasterize(clip, dataset):
 
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
-def test_geometry_mask(clip, invert, dataset):
+def test_geometry_mask(clip, invert, engine, dataset):
     fname = "geometry_mask_snapshot.nc"
     try:
         snapshot = xr.load_dataarray(fname)
@@ -61,7 +62,7 @@ def test_geometry_mask(clip, invert, dataset):
 
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
 
-    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, invert=invert)
+    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, invert=invert, engine=engine)
     rasterized = geometry_mask(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
 
@@ -76,3 +77,14 @@ def test_geometry_mask(clip, invert, dataset):
         with raise_if_dask_computes():
             drasterized = geometry_mask(chunked, dask_geoms[["geometry"]], **kwargs)
         xr.testing.assert_identical(drasterized, snapshot)
+
+
+# geometry_clip is rasterio-specific
+def test_geometry_clip(dataset):
+    pytest.importorskip("rasterio")
+
+    world = gpd.read_file(geodatasets.get_path("naturalearth land"))
+    clipped = geometry_clip(dataset, world[["geometry"]], xdim="longitude", ydim="latitude")
+    assert clipped is not None
+    # Basic check that clipping worked - masked values outside geometries
+    assert clipped["u"].isnull().any()
