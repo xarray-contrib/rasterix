@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Property tests comparing RasterIndex with PandasIndex for indexing operations."""
 
-from collections.abc import Hashable
-
 import numpy as np
 import pytest
 import xarray as xr
@@ -21,27 +19,6 @@ from rasterix.strategies import (
     outer_array_label_indexers,
     vectorized_label_indexers,
 )
-
-
-def is_mixed_scalar_slice_indexer(indexers: dict[Hashable, int | slice]) -> bool:
-    # TODO: Fix bug in RasterIndex with mixed scalar/slice indexing across dimensions
-    # When you have scalar indexing on one dimension (e.g., y=0) and slice indexing
-    # on another (e.g., x=slice(None, 1)), RasterIndex.isel() returns None for the
-    # scalar dimension, dropping that index. This causes xarray to incorrectly handle
-    # the coordinate variables - the sliced dimension's coordinate (x) maintains
-    # dims ('x',) even though the data has been reduced by the scalar indexing.
-    # This results in: "ValueError: dimensions ('x',) must have the same length as
-    # the number of data dimensions, ndim=0"
-    #
-    # Example failing case: raster_da.isel(y=0, x=slice(None, 1))
-    # - y=0 causes RasterIndex to return None for y dimension
-    # - x=slice(None, 1) preserves RasterIndex for x dimension
-    # - Result: coordinate variable x has wrong dimensionality
-    #
-    # For now, filter out these cases using hypothesis.assume()
-    has_scalar = any(isinstance(v, int | np.integer) for v in indexers.values())
-    has_slice = any(isinstance(v, slice) for v in indexers.values())
-    return has_scalar and has_slice and len(indexers) > 1
 
 
 @pytest.fixture
@@ -92,9 +69,7 @@ def pandas_da(raster_da):
 def test_isel_basic_indexing_equivalence(data, raster_da, pandas_da):
     """Test that isel produces identical results for RasterIndex and PandasIndex."""
     sizes = dict(raster_da.sizes)
-    indexers = data.draw(
-        basic_indexers(sizes=sizes).filter(lambda idxr: not is_mixed_scalar_slice_indexer(idxr))
-    )
+    indexers = data.draw(basic_indexers(sizes=sizes))
     result_raster = raster_da.isel(indexers)
     result_pandas = pandas_da.isel(indexers)
     xr.testing.assert_identical(result_raster, result_pandas)
