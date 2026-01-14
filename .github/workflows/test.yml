@@ -49,7 +49,7 @@ jobs:
       - name: Set Up Hatch Env
         run: |
           hatch env create test.py${{ matrix.python-version }}
-          hatch env run -e test.py${{ matrix.python-version }} list-env
+          hatch env run --env test.py${{ matrix.python-version }} list-env
       - name: Run Tests
         run: |
           hatch env run --env test.py${{ matrix.python-version }} run-coverage
