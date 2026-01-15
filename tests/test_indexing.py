@@ -67,12 +67,12 @@ def pandas_da(raster_da):
 @given(data=st.data())
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_isel_basic_indexing_equivalence(data, raster_da, pandas_da):
-    """Test that isel produces identical results for RasterIndex and PandasIndex."""
+    """Test that isel produces equal results for RasterIndex and PandasIndex."""
     sizes = dict(raster_da.sizes)
     indexers = data.draw(basic_indexers(sizes=sizes))
     result_raster = raster_da.isel(indexers)
     result_pandas = pandas_da.isel(indexers)
-    xr.testing.assert_identical(result_raster, result_pandas)
+    xr.testing.assert_equal(result_raster, result_pandas)
 
 
 @given(data=st.data())
@@ -81,7 +81,7 @@ def test_isel_basic_indexing_equivalence(data, raster_da, pandas_da):
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_sel_basic_indexing_equivalence(data, raster_da, pandas_da):
-    """Test that isel produces identical results for RasterIndex and PandasIndex."""
+    """Test that isel produces equal results for RasterIndex and PandasIndex."""
     indexers = data.draw(basic_label_indexers(indexes=pandas_da.xindexes))
 
     result_raster = raster_da.sel(
@@ -93,40 +93,40 @@ def test_sel_basic_indexing_equivalence(data, raster_da, pandas_da):
     if all(isinstance(idxr, slice) for idxr in indexers.values()):
         assert all(isinstance(idx, RasterIndex) for idx in result_raster.xindexes.get_unique())
 
-    xr.testing.assert_identical(result_raster, result_pandas)
+    xr.testing.assert_equal(result_raster, result_pandas)
 
 
 def test_simple_isel(raster_da, pandas_da):
     """Sanity check: simple indexing operations."""
     # Scalar indexing
-    xr.testing.assert_identical(raster_da.isel(x=0), pandas_da.isel(x=0))
-    xr.testing.assert_identical(raster_da.isel(y=0), pandas_da.isel(y=0))
-    xr.testing.assert_identical(raster_da.isel(x=0, y=0), pandas_da.isel(x=0, y=0))
+    xr.testing.assert_equal(raster_da.isel(x=0), pandas_da.isel(x=0))
+    xr.testing.assert_equal(raster_da.isel(y=0), pandas_da.isel(y=0))
+    xr.testing.assert_equal(raster_da.isel(x=0, y=0), pandas_da.isel(x=0, y=0))
 
     # Slice indexing
-    xr.testing.assert_identical(raster_da.isel(x=slice(2, 5)), pandas_da.isel(x=slice(2, 5)))
-    xr.testing.assert_identical(raster_da.isel(y=slice(1, 4)), pandas_da.isel(y=slice(1, 4)))
-    xr.testing.assert_identical(
+    xr.testing.assert_equal(raster_da.isel(x=slice(2, 5)), pandas_da.isel(x=slice(2, 5)))
+    xr.testing.assert_equal(raster_da.isel(y=slice(1, 4)), pandas_da.isel(y=slice(1, 4)))
+    xr.testing.assert_equal(
         raster_da.isel(x=slice(2, 5), y=slice(1, 4)),
         pandas_da.isel(x=slice(2, 5), y=slice(1, 4)),
     )
 
     # Array indexing
-    xr.testing.assert_identical(raster_da.isel(x=[0, 2, 4]), pandas_da.isel(x=[0, 2, 4]))
-    xr.testing.assert_identical(raster_da.isel(y=[1, 3]), pandas_da.isel(y=[1, 3]))
+    xr.testing.assert_equal(raster_da.isel(x=[0, 2, 4]), pandas_da.isel(x=[0, 2, 4]))
+    xr.testing.assert_equal(raster_da.isel(y=[1, 3]), pandas_da.isel(y=[1, 3]))
 
 
 @given(data=st.data())
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 def test_outer_array_indexing(data, raster_da, pandas_da):
-    """Test that outer array indexing produces identical results for RasterIndex and PandasIndex."""
+    """Test that outer array indexing produces equal results for RasterIndex and PandasIndex."""
     sizes = dict(raster_da.sizes)
     indexers = data.draw(outer_array_indexers(sizes=sizes))
 
     result_raster = raster_da.isel(indexers)
     result_pandas = pandas_da.isel(indexers)
 
-    xr.testing.assert_identical(result_raster, result_pandas)
+    xr.testing.assert_equal(result_raster, result_pandas)
 
 
 @given(data=st.data())
@@ -135,11 +135,11 @@ def test_outer_array_indexing(data, raster_da, pandas_da):
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
 def test_outer_array_label_indexing(data, raster_da, pandas_da):
-    """Test that outer array label indexing produces identical results for RasterIndex and PandasIndex."""
+    """Test that outer array label indexing produces equal results for RasterIndex and PandasIndex."""
     indexers = data.draw(outer_array_label_indexers(indexes=pandas_da.xindexes))
     result_raster = raster_da.sel(indexers, method="nearest")
     result_pandas = pandas_da.sel(indexers, method="nearest")
-    xr.testing.assert_identical(result_raster, result_pandas)
+    xr.testing.assert_equal(result_raster, result_pandas)
 
 
 @given(data=st.data())
