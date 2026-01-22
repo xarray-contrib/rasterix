@@ -14,7 +14,7 @@ from xarray import Coordinates, DataArray, Dataset, Index, Variable, get_options
 from xarray.core.coordinate_transform import CoordinateTransform
 
 # TODO: import from public API once it is available
-from xarray.core.indexes import CoordinateTransformIndex
+from xarray.core.indexes import CoordinateTransformIndex, PandasIndex
 from xarray.core.indexing import IndexSelResult, merge_sel_results
 from xarray.core.types import JoinOptions
 from xproj.typing import CRSAwareIndex
@@ -839,6 +839,23 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
             x = self._xy_indexes[XAXIS].axis_transform.affine
             y = self._xy_indexes[YAXIS].axis_transform.affine
             return Affine(x.a, x.b, x.c, y.d, y.e, y.f)
+
+    def _as_pandas_index(self) -> dict[str, PandasIndex]:
+        """Convert RasterIndex to equivalent PandasIndex objects.
+
+        Returns a dict mapping dimension names to PandasIndex instances.
+        For internal/testing use.
+        """
+        result = {}
+        if self._axis_independent:
+            for idx in self._xy_indexes:
+                dim = idx.axis_transform.dim
+                values = idx.to_pandas_index()
+                result[dim] = PandasIndex(values, dim)
+        else:
+            raise NotImplementedError("_as_pandas_index not supported for non-rectilinear grids")
+
+        return result
 
     @property
     def bbox(self) -> BoundingBox:
