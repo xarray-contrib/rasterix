@@ -38,17 +38,6 @@ dynamic=["version"]
 dask = ["dask-geopandas"]
 rasterize = ["rasterio"]
 exactextract = ["exactextract", "sparse"]
-test = [
-  "geodatasets",
-  "pooch",
-  "dask-geopandas",
-  "rasterio",
-  "exactextract",
-  "sparse",
-  "netCDF4",
-  "hypothesis",
-  "xarray @ git+https://github.com/dcherian/xarray.git@fix-coord-transform-indexing",
-]
 docs = [
   "geodatasets",
   "pooch",
@@ -91,14 +80,26 @@ exclude = [
     "doc",
 ]
 
-[tool.hatch.envs.test]
-dependencies = [
+[dependency-groups]
+test = [
     "coverage",
+    "dask-geopandas",
+    "exactextract",
+    "geodatasets",
+    "hypothesis",
+    "netCDF4",
+    "pooch",
+    "pytest",
     "pytest",
     "pytest-cov",
-    "pytest-xdist"
+    "pytest-xdist",
+    "rasterio",
+    "sparse",
+    "xarray @ git+https://github.com/pydata/xarray.git@26ccc7f8f014f29c551fd566a04d6e9f878c0b0b", # https://github.com/pydata/xarray/pull/10980
 ]
-features = ["test"]
+
+[tool.hatch.envs.test]
+dependency-groups = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
 python = ["3.11", "3.13"]
