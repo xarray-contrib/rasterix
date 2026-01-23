@@ -24,7 +24,6 @@ def with_rio_env(func: F) -> F:
     """
     Decorator that handles the 'env' and 'clear_cache' kwargs.
     """
-    import rasterio as rio
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -32,6 +31,8 @@ def with_rio_env(func: F) -> F:
         clear_cache = kwargs.pop("clear_cache", False)
 
         if env is None:
+            import rasterio as rio
+
             env = rio.Env()
 
         with env:

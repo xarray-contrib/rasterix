@@ -7,7 +7,6 @@ import xproj  # noqa
 from xarray.tests import raise_if_dask_computes
 
 from rasterix.rasterize import geometry_mask, rasterize
-from rasterix.rasterize.rasterio import geometry_clip
 
 
 @pytest.fixture
@@ -82,6 +81,8 @@ def test_geometry_mask(clip, invert, engine, dataset):
 # geometry_clip is rasterio-specific
 def test_geometry_clip(dataset):
     pytest.importorskip("rasterio")
+
+    from rasterix.rasterize.rasterio import geometry_clip
 
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
     clipped = geometry_clip(dataset, world[["geometry"]], xdim="longitude", ydim="latitude")
