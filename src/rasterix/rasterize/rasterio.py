@@ -11,13 +11,10 @@ from affine import Affine
 F = TypeVar("F", bound=Callable[..., Any])
 
 if TYPE_CHECKING:
-    import dask_geopandas
-    import geopandas as gpd
     import rasterio as rio
-    import xarray as xr
     from rasterio.features import MergeAlg
 
-__all__ = ["geometry_clip"]
+__all__: list[str] = []
 
 
 def with_rio_env(func: F) -> F:
@@ -36,6 +33,8 @@ def with_rio_env(func: F) -> F:
             env = rio.Env()
 
         with env:
+            # Remove env and clear_cache from kwargs before calling the wrapped function
+            # since the function shouldn't handle the context management
             result = func(*args, **kwargs)
 
         if clear_cache:
@@ -139,75 +138,3 @@ def np_geometry_mask(
     res = geometry_mask_rio(geometries, out_shape=shape, transform=affine, **kwargs)
     assert res.shape == shape
     return res
-
-
-# ===========> geometry_clip (rasterio-specific)
-
-
-def geometry_clip(
-    obj: xr.Dataset | xr.DataArray,
-    geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
-    *,
-    xdim: str = "x",
-    ydim: str = "y",
-    all_touched: bool = False,
-    invert: bool = False,
-    geoms_rechunk_size: int | None = None,
-    env: rio.Env | None = None,
-    clip: bool = True,
-) -> xr.DataArray:
-    """
-    Dask-ified version of rioxarray.clip
-
-    This function is rasterio-specific.
-
-    Parameters
-    ----------
-    obj : xr.DataArray or xr.Dataset
-        Xarray object used to extract the grid
-    geometries : GeoDataFrame or DaskGeoDataFrame
-        Geometries used for clipping
-    xdim : str
-        Name of the "x" dimension on ``obj``.
-    ydim : str
-        Name of the "y" dimension on ``obj``
-    all_touched : bool
-        Passed to rasterio
-    invert : bool
-        Whether to preserve values inside the geometry.
-    geoms_rechunk_size : int or None
-        Chunksize for geometry dimension of the output.
-    env : rasterio.Env
-        Rasterio Environment configuration. For example, use set ``GDAL_CACHEMAX``
-        by passing ``env = rio.Env(GDAL_CACHEMAX=100 * 1e6)``.
-    clip : bool
-        If True, clip raster to the bounding box of the geometries.
-        Ignored for dask-geopandas geometries.
-
-    Returns
-    -------
-    DataArray
-        Clipped DataArray.
-
-    See Also
-    --------
-    rasterio.features.geometry_mask
-    """
-    from .core import geometry_mask
-    from .utils import clip_to_bbox
-
-    if clip:
-        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
-    mask = geometry_mask(
-        obj,
-        geometries,
-        engine="rasterio",
-        all_touched=all_touched,
-        invert=not invert,  # rioxarray clip convention -> rasterio geometry_mask convention
-        xdim=xdim,
-        ydim=ydim,
-        geoms_rechunk_size=geoms_rechunk_size,
-        clip=False,
-        env=env,
-    )
-    return obj.where(mask)

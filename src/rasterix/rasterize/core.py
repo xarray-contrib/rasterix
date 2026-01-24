@@ -14,7 +14,7 @@ from .utils import XAXIS, YAXIS, clip_to_bbox, is_in_memory, prepare_for_dask
 if TYPE_CHECKING:
     import dask_geopandas
 
-__all__ = ["rasterize", "geometry_mask"]
+__all__ = ["rasterize", "geometry_mask", "geometry_clip"]
 
 Engine = Literal["rasterio", "rusterize"]
 
@@ -365,3 +365,76 @@ def geometry_mask(
         ),
         name="mask",
     )
+
+
+def geometry_clip(
+    obj: xr.Dataset | xr.DataArray,
+    geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
+    *,
+    engine: Engine | None = None,
+    xdim: str = "x",
+    ydim: str = "y",
+    all_touched: bool = False,
+    invert: bool = False,
+    geoms_rechunk_size: int | None = None,
+    clip: bool = True,
+    **engine_kwargs,
+) -> xr.DataArray:
+    """
+    Dask-aware geometry clipping.
+
+    Clips an xarray object to geometries by masking values outside the geometries.
+
+    Parameters
+    ----------
+    obj : xr.DataArray or xr.Dataset
+        Xarray object to clip.
+    geometries : GeoDataFrame or DaskGeoDataFrame
+        Geometries used for clipping.
+    engine : {"rasterio", "rusterize"} or None
+        Rasterization engine to use. If None, auto-detects based on installed
+        packages (prefers rusterize if available, falls back to rasterio).
+    xdim : str
+        Name of the "x" dimension on ``obj``.
+    ydim : str
+        Name of the "y" dimension on ``obj``.
+    all_touched : bool
+        If True, all pixels touched by geometries will be included.
+    invert : bool
+        If True, preserve values outside the geometry (invert the clip).
+        If False (default), preserve values inside the geometry.
+    geoms_rechunk_size : int or None
+        Chunksize for geometry dimension of the output.
+    clip : bool
+        If True, clip raster to the bounding box of the geometries.
+        Ignored for dask-geopandas geometries.
+    **engine_kwargs
+        Additional keyword arguments passed to the engine.
+        For rasterio: ``env`` (rasterio.Env for GDAL configuration).
+
+    Returns
+    -------
+    DataArray
+        Clipped DataArray with values outside geometries set to NaN.
+
+    See Also
+    --------
+    geometry_mask
+    rasterio.features.geometry_mask
+    """
+    if clip:
+        obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
+
+    mask = geometry_mask(
+        obj,
+        geometries,
+        engine=engine,
+        all_touched=all_touched,
+        invert=not invert,  # rioxarray clip convention -> geometry_mask convention
+        xdim=xdim,
+        ydim=ydim,
+        geoms_rechunk_size=geoms_rechunk_size,
+        clip=False,
+        **engine_kwargs,
+    )
+    return obj.where(mask)

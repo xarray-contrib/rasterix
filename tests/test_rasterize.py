@@ -6,7 +6,7 @@ import xarray as xr
 import xproj  # noqa
 from xarray.tests import raise_if_dask_computes
 
-from rasterix.rasterize import geometry_mask, rasterize
+from rasterix.rasterize import geometry_clip, geometry_mask, rasterize
 
 
 @pytest.fixture
@@ -78,14 +78,9 @@ def test_geometry_mask(clip, invert, engine, dataset):
         xr.testing.assert_identical(drasterized, snapshot)
 
 
-# geometry_clip is rasterio-specific
-def test_geometry_clip(dataset):
-    pytest.importorskip("rasterio")
-
-    from rasterix.rasterize.rasterio import geometry_clip
-
+def test_geometry_clip(engine, dataset):
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
-    clipped = geometry_clip(dataset, world[["geometry"]], xdim="longitude", ydim="latitude")
+    clipped = geometry_clip(dataset, world[["geometry"]], xdim="longitude", ydim="latitude", engine=engine)
     assert clipped is not None
     # Basic check that clipping worked - masked values outside geometries
     assert clipped["u"].isnull().any()
