@@ -165,6 +165,11 @@ def rasterize(
     DataArray
         2D DataArray with geometries "burned in" as integer codes.
 
+    Notes
+    -----
+    Different engines may produce slightly different results at pixel boundaries
+    due to differences in how they handle geometry-pixel intersection tests.
+
     See Also
     --------
     rasterio.features.rasterize

@@ -87,8 +87,10 @@ def rasterize_geometries(
         )
 
     # Create GeoDataFrame with index values
+    # Dummy CRS required by rusterize but not used by the algorithm
+    # https://github.com/ttrotto/rusterize/issues/10
     values = list(range(offset, offset + len(geometries)))
-    gdf = gpd.GeoDataFrame({"value": values}, geometry=list(geometries))
+    gdf = gpd.GeoDataFrame({"value": values}, geometry=list(geometries), crs="EPSG:4326")
 
     extent, (xres, yres) = _affine_to_extent_and_res(affine, shape)
 
@@ -104,6 +106,9 @@ def rasterize_geometries(
         dtype=str(dtype),
     )
 
+    # rusterize returns (1, nrows, ncols), squeeze to (nrows, ncols) if needed
+    if result.ndim == 3 and result.shape[0] == 1:
+        result = result.squeeze(axis=0)
     assert result.shape == shape
     return result
 
@@ -183,7 +188,9 @@ def np_geometry_mask(
         )
 
     # Create GeoDataFrame with burn value
-    gdf = gpd.GeoDataFrame(geometry=list(geometries))
+    # Dummy CRS required by rusterize but not used by the algorithm
+    # https://github.com/ttrotto/rusterize/issues/10
+    gdf = gpd.GeoDataFrame(geometry=list(geometries), crs="EPSG:4326")
 
     extent, (xres, yres) = _affine_to_extent_and_res(affine, shape)
 
@@ -198,6 +205,10 @@ def np_geometry_mask(
         encoding="numpy",
         dtype="uint8",
     )
+
+    # rusterize returns (1, nrows, ncols), squeeze to (nrows, ncols) if needed
+    if result.ndim == 3 and result.shape[0] == 1:
+        result = result.squeeze(axis=0)
 
     # Convert to boolean mask
     # rasterio convention: True = outside geometry (masked), False = inside geometry

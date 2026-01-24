@@ -19,7 +19,9 @@ def dataset():
 
 @pytest.mark.parametrize("clip", [False, True])
 def test_rasterize(clip, engine, dataset):
-    fname = "rasterize_snapshot.nc"
+    # Use engine-specific snapshots due to minor pixel boundary differences
+    suffix = f"_{engine}" if engine == "rusterize" else ""
+    fname = f"rasterize_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
     except FileNotFoundError:
@@ -49,7 +51,9 @@ def test_rasterize(clip, engine, dataset):
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
 def test_geometry_mask(clip, invert, engine, dataset):
-    fname = "geometry_mask_snapshot.nc"
+    # Use engine-specific snapshots due to minor pixel boundary differences
+    suffix = f"_{engine}" if engine == "rusterize" else ""
+    fname = f"geometry_mask_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
     except FileNotFoundError:
