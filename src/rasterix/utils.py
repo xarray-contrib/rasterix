@@ -1,7 +1,12 @@
 import xarray as xr
 from affine import Affine
 
-from rasterix.lib import affine_from_stac_proj_metadata, affine_from_tiepoint_and_scale, logger
+from rasterix.lib import (
+    affine_from_spatial_zarr_convention,
+    affine_from_stac_proj_metadata,
+    affine_from_tiepoint_and_scale,
+    logger,
+)
 
 
 def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
@@ -58,7 +63,7 @@ def get_affine(
             del grid_mapping_var.attrs["GeoTransform"]
         return Affine.from_gdal(*map(float, transform.split(" ")))
 
-    # Check for STAC and GeoTIFF metadata in DataArray attrs
+    # Check for STAC, GeoTIFF, or spatial zarr convention metadata in DataArray attrs
     attrs = obj.attrs if isinstance(obj, xr.DataArray) else {}
 
     # Try to extract affine from STAC proj:transform
@@ -78,6 +83,13 @@ def get_affine(
             del attrs["model_tiepoint"]
             del attrs["model_pixel_scale"]
 
+        return affine
+
+    # Try to extract from spatial zarr convention attributes
+    if affine := affine_from_spatial_zarr_convention(attrs):
+        logger.trace("Creating affine from spatial zarr convention attributes")
+        if clear_transform:
+            del attrs["spatial:transform"]
         return affine
 
     # Fall back to computing from coordinate arrays

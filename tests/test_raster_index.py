@@ -566,6 +566,75 @@ def test_assign_index_with_stac_proj_transform_9_elements():
     assert actual_affine == expected_affine
 
 
+def test_assign_index_with_spatial_zarr_convention():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"spatial:": "..."}],
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    # Check that the index was created
+    assert isinstance(result.xindexes["x"], RasterIndex)
+    assert isinstance(result.xindexes["y"], RasterIndex)
+
+    # Verify the affine transform
+    expected_affine = Affine(30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+    # Verify spatial:transform attribute is removed
+    assert "spatial:transform" not in result.attrs
+
+
+def test_assign_index_with_spatual_zarr_convention_too_few_raises():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"spatial:": "..."}],
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0],
+        },
+    )
+
+    with pytest.raises(ValueError, match="spatial:transform must have at least 6 elements"):
+        assign_index(da)
+
+
+def test_assign_index_with_spatual_zarr_convention_transform_type_not_implemented():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"spatial:": "..."}],
+            "spatial:transform_type": "not_affine",
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    with pytest.raises(NotImplementedError, match="Unsupported spatial:transform_type"):
+        assign_index(da)
+
+
+def test_assign_index_with_spatual_zarr_convention_registration_not_implemented():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"spatial:": "..."}],
+            "spatial:registration": "not_pixel",
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    with pytest.raises(NotImplementedError, match="Unsupported spatial:registration"):
+        assign_index(da)
+
+
 def test_assign_index_no_coords_no_metadata():
     """Test that assign_index raises error when coords are missing and no transform metadata."""
     da = xr.DataArray(np.ones((10, 10)), dims=("y", "x"))
