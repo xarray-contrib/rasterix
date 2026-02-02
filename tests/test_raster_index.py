@@ -775,3 +775,50 @@ def test_raster_index_from_stac_proj_metadata_with_crs():
     # Verify CRS was set
     assert index.crs is not None
     assert index.crs.to_epsg() == 32610
+
+
+def test_assign_index_proj_zarr_convention_code():
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "proj:code": "EPSG:4326",
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 4326
+
+
+def test_assign_index_proj_zarr_convention_wkt2():
+    crs = pyproj.CRS.from_epsg(3857)
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "proj:wkt2": crs.to_wkt(),
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 3857
+
+
+def test_assign_index_proj_zarr_convention_projjson():
+    crs = pyproj.CRS.from_epsg(32610)
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "proj:projjson": crs.to_json_dict(),
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 32610

@@ -1,5 +1,8 @@
+from typing import NotRequired, TypedDict
+
 import xarray as xr
 from affine import Affine
+from pyproj import CRS
 
 from rasterix.lib import (
     affine_from_spatial_zarr_convention,
@@ -118,3 +121,55 @@ def get_affine(
     return Affine.translation(
         x[0].item() - dx / 2, (y[0] if dy < 0 else y[-1]).item() - dy / 2
     ) * Affine.scale(dx, dy)
+
+
+_ZarrConventionRegistration = TypedDict("_ZarrConventionRegistration", {"proj:": str})
+
+_ZarrProjMetadata = TypedDict(
+    "_ZarrProjMetadata",
+    {
+        "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
+        "proj:code": NotRequired[str],
+        "proj:wkt2": NotRequired[str],
+        "proj:projjson": NotRequired[object],
+    },
+)
+
+
+def _has_proj_zarr_convention(metadata: _ZarrProjMetadata) -> bool:
+    zarr_conventions = metadata.get("zarr_conventions")
+    if not zarr_conventions:
+        return False
+    for entry in zarr_conventions:
+        if isinstance(entry, dict) and entry.get("name") == "proj:":
+            return True
+    return False
+
+
+def get_crs_from_proj_zarr_convention(obj: xr.Dataset | xr.DataArray) -> CRS | None:
+    """Extract CRS from Zarr proj: convention metadata if present.
+
+    See https://github.com/zarr-conventions/geo-proj for more details.
+
+    Parameters
+    ----------
+    obj: xr.Dataset or xr.DataArray
+        The Xarray object to extract CRS from.
+
+    Returns
+    -------
+    CRS or None
+        The extracted CRS object, or None if not found.
+    """
+    metadata: _ZarrProjMetadata = obj.attrs  # type: ignore[assignment]
+
+    if not _has_proj_zarr_convention(metadata):
+        return None
+
+    if code := metadata.get("proj:code"):
+        return CRS.from_string(code)
+    if wkt2 := metadata.get("proj:wkt2"):
+        return CRS.from_wkt(wkt2)
+    if projjson := metadata.get("proj:projjson"):
+        return CRS.from_user_input(projjson)
+    return None
