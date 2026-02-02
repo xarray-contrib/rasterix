@@ -120,6 +120,16 @@ _ZarrSpatialMetadata = TypedDict(
 )
 
 
+def _has_spatial_zarr_convention(metadata: _ZarrSpatialMetadata) -> bool:
+    zarr_conventions = metadata.get("zarr_conventions")
+    if not zarr_conventions:
+        return False
+    for entry in zarr_conventions:
+        if isinstance(entry, dict) and entry.get("name") == "spatial:":
+            return True
+    return False
+
+
 def affine_from_spatial_zarr_convention(metadata: dict) -> Affine | None:
     """Extract Affine transform from Zarr spatial convention metadata.
 
@@ -142,25 +152,23 @@ def affine_from_spatial_zarr_convention(metadata: dict) -> Affine | None:
     """
     possibly_spatial_metadata: _ZarrSpatialMetadata = metadata  # type: ignore[assignment]
 
-    if "zarr_conventions" in possibly_spatial_metadata:
-        conventions = possibly_spatial_metadata["zarr_conventions"]
-        if any("spatial:" in convention for convention in conventions):
-            if transform := possibly_spatial_metadata.get("spatial:transform"):
-                if len(transform) < 6:
-                    raise ValueError(f"spatial:transform must have at least 6 elements, got {len(transform)}")
+    if _has_spatial_zarr_convention(possibly_spatial_metadata):
+        if transform := possibly_spatial_metadata.get("spatial:transform"):
+            if len(transform) < 6:
+                raise ValueError(f"spatial:transform must have at least 6 elements, got {len(transform)}")
 
-                transform_type = possibly_spatial_metadata.get("spatial:transform_type", "affine")
-                if transform_type != "affine":
-                    raise NotImplementedError(
-                        f"Unsupported spatial:transform_type {transform_type!r}; only 'affine' is supported."
-                    )
+            transform_type = possibly_spatial_metadata.get("spatial:transform_type", "affine")
+            if transform_type != "affine":
+                raise NotImplementedError(
+                    f"Unsupported spatial:transform_type {transform_type!r}; only 'affine' is supported."
+                )
 
-                registration = possibly_spatial_metadata.get("spatial:registration", "pixel")
-                if registration != "pixel":
-                    raise NotImplementedError(
-                        f"Unsupported spatial:registration {registration!r}; only 'pixel' is supported."
-                    )
+            registration = possibly_spatial_metadata.get("spatial:registration", "pixel")
+            if registration != "pixel":
+                raise NotImplementedError(
+                    f"Unsupported spatial:registration {registration!r}; only 'pixel' is supported."
+                )
 
-                return Affine(*map(float, transform[:6]))
+            return Affine(*map(float, transform[:6]))
 
     return None
