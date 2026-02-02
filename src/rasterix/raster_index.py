@@ -21,7 +21,7 @@ from xproj.typing import CRSAwareIndex
 
 from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, maybe_int, snap_grid
 from rasterix.rioxarray_compat import guess_dims
-from rasterix.utils import get_affine
+from rasterix.utils import get_affine, get_crs_from_proj_zarr_convention
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
@@ -87,13 +87,17 @@ def assign_index(
 
     affine = get_affine(obj, x_dim=x_dim, y_dim=y_dim, clear_transform=True)
 
+    detected_crs = obj.proj.crs if crs else None
+    if detected_crs is None:
+        detected_crs = get_crs_from_proj_zarr_convention(obj)
+
     index = RasterIndex.from_transform(
         affine,
         width=obj.sizes[x_dim],
         height=obj.sizes[y_dim],
         x_dim=x_dim,
         y_dim=y_dim,
-        crs=obj.proj.crs if crs else None,
+        crs=detected_crs,
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
