@@ -571,7 +571,7 @@ def test_assign_index_with_spatial_zarr_convention():
         np.ones((100, 100)),
         dims=("y", "x"),
         attrs={
-            "zarr_conventions": [{"spatial:": "..."}],
+            "zarr_conventions": [{"name": "spatial:"}],
             "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
         },
     )
@@ -596,7 +596,7 @@ def test_assign_index_with_spatual_zarr_convention_too_few_raises():
         np.ones((100, 100)),
         dims=("y", "x"),
         attrs={
-            "zarr_conventions": [{"spatial:": "..."}],
+            "zarr_conventions": [{"name": "spatial:"}],
             "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0],
         },
     )
@@ -610,7 +610,7 @@ def test_assign_index_with_spatual_zarr_convention_transform_type_not_implemente
         np.ones((100, 100)),
         dims=("y", "x"),
         attrs={
-            "zarr_conventions": [{"spatial:": "..."}],
+            "zarr_conventions": [{"name": "spatial:"}],
             "spatial:transform_type": "not_affine",
             "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
         },
@@ -625,7 +625,7 @@ def test_assign_index_with_spatual_zarr_convention_registration_not_implemented(
         np.ones((100, 100)),
         dims=("y", "x"),
         attrs={
-            "zarr_conventions": [{"spatial:": "..."}],
+            "zarr_conventions": [{"name": "spatial:"}],
             "spatial:registration": "not_pixel",
             "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
         },
