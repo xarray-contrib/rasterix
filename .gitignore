@@ -52,9 +52,9 @@ coverage.xml
 # Sphinx documentation
 docs/_build/
 docs/api
-docs/data
-data
-data.zip
+docs/autoapi
+/data
+/data.zip
 
 # PyBuilder
 target/
@@ -80,7 +80,7 @@ src/rasterix/_version.py
 #example*
 #doesnotexist
 #test_sync*
-data/*
+/data/*
 src/fixture/
 fixture/
 junit.xml
