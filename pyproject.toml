@@ -95,7 +95,7 @@ test = [
     "pytest-xdist",
     "rasterio",
     "sparse",
-    "xarray @ git+https://github.com/pydata/xarray.git@26ccc7f8f014f29c551fd566a04d6e9f878c0b0b", # https://github.com/pydata/xarray/pull/10980
+    "xarray",
 ]
 
 [tool.hatch.envs.test]
