@@ -45,6 +45,7 @@ docs = [
   "pooch",
   "dask-geopandas",
   "rasterio",
+  "rusterize",
   "rioxarray",
   "exactextract",
   "sparse",
