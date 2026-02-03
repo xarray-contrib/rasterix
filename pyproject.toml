@@ -24,6 +24,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "affine",
@@ -102,7 +103,7 @@ test = [
 dependency-groups = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.13"]
+python = ["3.11", "3.14"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
