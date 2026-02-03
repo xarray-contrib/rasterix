@@ -20,7 +20,7 @@ def dataset():
 @pytest.mark.parametrize("clip", [False, True])
 def test_rasterize(clip, engine, dataset):
     # Use engine-specific snapshots due to minor pixel boundary differences
-    suffix = f"_{engine}" if engine == "rusterize" else ""
+    suffix = f"_{engine}" if engine in ("rusterize", "exactextract") else ""
     fname = f"rasterize_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
@@ -52,7 +52,7 @@ def test_rasterize(clip, engine, dataset):
 @pytest.mark.parametrize("clip", [False, True])
 def test_geometry_mask(clip, invert, engine, dataset):
     # Use engine-specific snapshots due to minor pixel boundary differences
-    suffix = f"_{engine}" if engine == "rusterize" else ""
+    suffix = f"_{engine}" if engine in ("rusterize", "exactextract") else ""
     fname = f"geometry_mask_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)

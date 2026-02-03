@@ -17,6 +17,13 @@ def _engine_available(engine: str) -> bool:
             return True
         except ImportError:
             return False
+    elif engine == "exactextract":
+        try:
+            import exactextract  # noqa: F401
+
+            return True
+        except ImportError:
+            return False
     return False
 
 
@@ -29,8 +36,10 @@ def pytest_generate_tests(metafunc):
             engines.append("rasterio")
         if _engine_available("rusterize"):
             engines.append("rusterize")
+        if _engine_available("exactextract"):
+            engines.append("exactextract")
 
         if not engines:
-            pytest.skip("No rasterization engine available (need rasterio or rusterize)")
+            pytest.skip("No rasterization engine available (need rasterio, rusterize, or exactextract)")
 
         metafunc.parametrize("engine", engines)

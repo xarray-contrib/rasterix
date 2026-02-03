@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 __all__ = ["rasterize", "geometry_mask", "geometry_clip"]
 
-Engine = Literal["rasterio", "rusterize"]
+Engine = Literal["rasterio", "rusterize", "exactextract"]
 
 
 def _get_engine(engine: Engine | None) -> Engine:
@@ -33,9 +33,17 @@ def _get_engine(engine: Engine | None) -> Engine:
                 import rasterio as _  # noqa: F401
             except ImportError as e:
                 raise ImportError("rasterio is not installed. Install it with: pip install rasterio") from e
+        elif engine == "exactextract":
+            try:
+                import exactextract as _  # noqa: F401
+            except ImportError as e:
+                raise ImportError(
+                    "exactextract is not installed. Install it with: pip install exactextract"
+                ) from e
         return engine
 
     # Auto-detect: prefer rusterize, fall back to rasterio
+    # Note: exactextract is not auto-selected - it must be explicitly requested
     try:
         import rusterize as _  # noqa: F401
 
@@ -60,6 +68,8 @@ def _get_rasterize_funcs(engine: Engine):
     """Get the engine-specific rasterize functions."""
     if engine == "rasterio":
         from . import rasterio as engine_module
+    elif engine == "exactextract":
+        from . import exact as engine_module
     else:
         from . import rusterize as engine_module
 
@@ -73,6 +83,8 @@ def _get_mask_funcs(engine: Engine):
     """Get the engine-specific geometry_mask functions."""
     if engine == "rasterio":
         from . import rasterio as engine_module
+    elif engine == "exactextract":
+        from . import exact as engine_module
     else:
         from . import rusterize as engine_module
 
@@ -95,7 +107,7 @@ def _normalize_merge_alg(merge_alg: str, engine: Engine) -> Any:
             raise ValueError(f"Invalid merge_alg {merge_alg!r}. Must be one of: {list(mapping.keys())}")
         return mapping[merge_alg]
     else:
-        # rusterize uses different names
+        # rusterize and exactextract use the same names
         mapping = {
             "replace": "last",
             "add": "sum",
