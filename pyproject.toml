@@ -148,7 +148,7 @@ list-env = "pip list"
 dependency-groups = ["test-rusterize"]
 
 [[tool.hatch.envs.test-rusterize.matrix]]
-python = ["3.11", "3.13"]
+python = ["3.11", "3.14"]
 
 [tool.hatch.envs.test-rusterize.scripts]
 run-coverage = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
