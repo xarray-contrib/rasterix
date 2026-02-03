@@ -237,6 +237,8 @@ def rasterize(
             rasterized = rasterized.max(axis=0)
         elif merge_alg == "add":
             rasterized = rasterized.sum(axis=0)
+        else:
+            raise ValueError(f"Invalid merge_alg {merge_alg!r}. Must be one of: ['replace', 'add']")
 
         # and reduce every other value by 1
         rasterized = rasterized.map_blocks(partial(replace_values, to=num_geoms))
