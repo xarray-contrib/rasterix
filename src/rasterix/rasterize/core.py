@@ -95,11 +95,12 @@ def _get_mask_funcs(engine: Engine):
 
 
 def _normalize_merge_alg(merge_alg: str, engine: Engine) -> Any:
-    """Normalize merge_alg string to engine-specific value."""
-    valid_values = ("replace", "add")
-    if merge_alg not in valid_values:
-        raise ValueError(f"Invalid merge_alg {merge_alg!r}. Must be one of: {list(valid_values)}")
+    """Normalize merge_alg string to engine-specific value.
 
+    rasterio and exactextract use "replace" and "add".
+    rusterize uses "last" and "sum" (plus "first", "min", "max", "count", "any").
+    We translate "replace" -> "last" and "add" -> "sum" for rusterize.
+    """
     if engine == "rasterio":
         from rasterio.features import MergeAlg
 
@@ -107,10 +108,22 @@ def _normalize_merge_alg(merge_alg: str, engine: Engine) -> Any:
             "replace": MergeAlg.replace,
             "add": MergeAlg.add,
         }
+        if merge_alg not in mapping:
+            raise ValueError(
+                f"Invalid merge_alg {merge_alg!r} for rasterio. Must be one of: {list(mapping.keys())}"
+            )
         return mapping[merge_alg]
-    else:
-        # rusterize and exactextract handle the translation internally
+    elif engine == "exactextract":
+        valid_values = ("replace", "add")
+        if merge_alg not in valid_values:
+            raise ValueError(
+                f"Invalid merge_alg {merge_alg!r} for exactextract. Must be one of: {list(valid_values)}"
+            )
         return merge_alg
+    else:
+        # rusterize: translate common names, pass through native names
+        translation = {"replace": "last", "add": "sum"}
+        return translation.get(merge_alg, merge_alg)
 
 
 def replace_values(array: np.ndarray, to, *, from_=0) -> np.ndarray:
@@ -157,10 +170,11 @@ def rasterize(
         If True, all pixels touched by geometries will be burned in.
         If False, only pixels whose center is within the geometry are burned.
         Note: Not supported by rusterize or exactextract engines.
-    merge_alg : {"replace", "add"}
+    merge_alg : str
         Merge algorithm when geometries overlap.
         - "replace": later geometries overwrite earlier ones
         - "add": values are summed where geometries overlap
+        The rusterize engine also accepts: "first", "min", "max", "count", "any".
     geoms_rechunk_size : int or None
         Size to rechunk the geometry array to *after* conversion from dataframe.
     clip : bool
