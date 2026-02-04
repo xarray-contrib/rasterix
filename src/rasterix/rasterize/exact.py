@@ -28,30 +28,41 @@ CoverageWeights = Literal["area_spherical_m2", "area_cartesian", "area_spherical
 __all__ = ["coverage"]
 
 
-def affine_to_xy_coords(affine, shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
-    """Convert affine transform and shape to x and y coordinate arrays.
+def affine_to_raster_source(affine, shape: tuple[int, int], *, srs_wkt: str | None) -> NumPyRasterSource:
+    """Convert affine transform and shape directly to a NumPyRasterSource.
 
     Parameters
     ----------
     affine : Affine
-        Affine transform for the raster grid.
+        Affine transform for the raster grid (top-left corner convention).
     shape : tuple[int, int]
         Shape of the raster (nrows, ncols).
+    srs_wkt : str or None
+        Well-known text representation of the spatial reference system.
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray]
-        x and y coordinate arrays (1D) representing pixel centers.
+    NumPyRasterSource
+        A raster source with the specified extent for use with exactextract.
     """
     nrows, ncols = shape
-    # Generate pixel center coordinates
-    cols = np.arange(ncols)
-    rows = np.arange(nrows)
-    # affine.c is x origin, affine.a is x pixel size
-    # affine.f is y origin, affine.e is y pixel size (typically negative)
-    x = affine.c + (cols + 0.5) * affine.a
-    y = affine.f + (rows + 0.5) * affine.e
-    return x, y
+    # Compute the four corners using the affine transform
+    # The affine maps pixel coordinates to world coordinates
+    # Top-left: (0, 0), Top-right: (ncols, 0), Bottom-left: (0, nrows), Bottom-right: (ncols, nrows)
+    x0, y0 = affine * (0, 0)  # top-left
+    x1, y1 = affine * (ncols, nrows)  # bottom-right
+
+    xmin, xmax = min(x0, x1), max(x0, x1)
+    ymin, ymax = min(y0, y1), max(y0, y1)
+
+    return NumPyRasterSource(
+        np.broadcast_to([1], shape),
+        xmin=xmin,
+        xmax=xmax,
+        ymin=ymin,
+        ymax=ymax,
+        srs_wkt=srs_wkt,
+    )
 
 
 def xy_to_raster_source(x: np.ndarray, y: np.ndarray, *, srs_wkt: str | None) -> NumPyRasterSource:
@@ -405,15 +416,12 @@ def rasterize_geometries(
     if len(geometries) == 0:
         return np.full(shape, fill, dtype=dtype)
 
-    # Convert affine to x,y coordinates
-    x, y = affine_to_xy_coords(affine, shape)
-
     # Create GeoDataFrame (exactextract requires it)
     # Use a dummy CRS - exactextract needs one but the algorithm doesn't depend on it
     gdf = gpd.GeoDataFrame(geometry=list(geometries), crs="EPSG:4326")
 
     # Use exactextract to get coverage (binary mode for efficiency)
-    raster = xy_to_raster_source(x, y, srs_wkt=gdf.crs.to_wkt())
+    raster = affine_to_raster_source(affine, shape, srs_wkt=gdf.crs.to_wkt())
     result = exact_extract(
         rast=raster,
         vec=gdf,
@@ -519,14 +527,11 @@ def np_geometry_mask(
         # No geometries: all pixels are outside (masked=True) or inside (masked=False)
         return np.full(shape, not invert, dtype=bool)
 
-    # Convert affine to x,y coordinates
-    x, y = affine_to_xy_coords(affine, shape)
-
     # Create GeoDataFrame (exactextract requires it)
     gdf = gpd.GeoDataFrame(geometry=list(geometries), crs="EPSG:4326")
 
     # Use exactextract to get coverage
-    raster = xy_to_raster_source(x, y, srs_wkt=gdf.crs.to_wkt())
+    raster = affine_to_raster_source(affine, shape, srs_wkt=gdf.crs.to_wkt())
     result = exact_extract(
         rast=raster,
         vec=gdf,
