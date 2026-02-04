@@ -68,3 +68,49 @@ jobs:
       #   with:
       #     token: ${{ secrets.CODECOV_TOKEN }}
       #     verbose: true # optional (default = false)
+
+  test-rusterize:
+    name: rusterize, py=${{ matrix.python-version }}
+
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.14"]
+        os: ["ubuntu-latest"]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # grab all branches and tags
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+      - name: Install Hatch
+        run: |
+          python -m pip install --upgrade pip
+          pip install hatch
+      - name: Restore cached hypothesis directory
+        id: restore-hypothesis-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .hypothesis/
+          key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            cache-hypothesis-
+      - name: Set Up Hatch Env
+        run: |
+          hatch env create test-rusterize.py${{ matrix.python-version }}
+          hatch env run -e test-rusterize.py${{ matrix.python-version }} list-env
+      - name: Run Tests
+        run: |
+          hatch env run --env test-rusterize.py${{ matrix.python-version }} run-coverage
+
+      - name: Save cached hypothesis directory
+        id: save-hypothesis-cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .hypothesis/
+          key: cache-hypothesis-${{ runner.os }}-${{ github.run_id }}

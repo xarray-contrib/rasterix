@@ -6,7 +6,7 @@ import xarray as xr
 import xproj  # noqa
 from xarray.tests import raise_if_dask_computes
 
-from rasterix.rasterize.rasterio import geometry_mask, rasterize
+from rasterix.rasterize import geometry_clip, geometry_mask, rasterize
 
 
 @pytest.fixture
@@ -18,8 +18,10 @@ def dataset():
 
 
 @pytest.mark.parametrize("clip", [False, True])
-def test_rasterize(clip, dataset):
-    fname = "rasterize_snapshot.nc"
+def test_rasterize(clip, engine, dataset):
+    # Use engine-specific snapshots due to minor pixel boundary differences
+    suffix = f"_{engine}" if engine == "rusterize" else ""
+    fname = f"rasterize_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
     except FileNotFoundError:
@@ -29,7 +31,7 @@ def test_rasterize(clip, dataset):
         snapshot = snapshot.sel(latitude=slice(83.25, None))
 
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
-    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip)
+    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, engine=engine)
     rasterized = rasterize(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
 
@@ -48,8 +50,10 @@ def test_rasterize(clip, dataset):
 
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
-def test_geometry_mask(clip, invert, dataset):
-    fname = "geometry_mask_snapshot.nc"
+def test_geometry_mask(clip, invert, engine, dataset):
+    # Use engine-specific snapshots due to minor pixel boundary differences
+    suffix = f"_{engine}" if engine == "rusterize" else ""
+    fname = f"geometry_mask_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
     except FileNotFoundError:
@@ -61,7 +65,7 @@ def test_geometry_mask(clip, invert, dataset):
 
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
 
-    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, invert=invert)
+    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, invert=invert, engine=engine)
     rasterized = geometry_mask(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
 
@@ -76,3 +80,11 @@ def test_geometry_mask(clip, invert, dataset):
         with raise_if_dask_computes():
             drasterized = geometry_mask(chunked, dask_geoms[["geometry"]], **kwargs)
         xr.testing.assert_identical(drasterized, snapshot)
+
+
+def test_geometry_clip(engine, dataset):
+    world = gpd.read_file(geodatasets.get_path("naturalearth land"))
+    clipped = geometry_clip(dataset, world[["geometry"]], xdim="longitude", ydim="latitude", engine=engine)
+    assert clipped is not None
+    # Basic check that clipping worked - masked values outside geometries
+    assert clipped["u"].isnull().any()
