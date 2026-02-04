@@ -67,7 +67,7 @@ def rasterize_geometries(
         If True, all pixels touched by geometries will be burned in.
         Note: rusterize may not support this parameter directly.
     merge_alg : str
-        Merge algorithm: "last", "sum", "first", "min", "max", "count", "any".
+        Merge algorithm. Supported values: "last", "sum", "first", "min", "max", "count", "any".
     fill : Any
         Fill value for pixels not covered by any geometry.
     **kwargs

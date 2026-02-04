@@ -8,19 +8,30 @@ from xarray.tests import raise_if_dask_computes
 
 from rasterix.rasterize import geometry_clip, geometry_mask, rasterize
 
+pytestmark = pytest.mark.filterwarnings("ignore:variable '.*' has non-conforming '_FillValue'")
+
 
 @pytest.fixture
 def dataset():
-    ds = xr.tutorial.open_dataset("eraint_uvz")
-    ds = ds.proj.assign_crs(spatial_ref="epsg:4326")
-    ds["spatial_ref"].attrs = ds.proj.crs.to_cf()
-    return ds
+    with xr.tutorial.open_dataset("eraint_uvz") as ds:
+        ds = ds.load()
+        ds = ds.proj.assign_crs(spatial_ref="epsg:4326")
+        ds["spatial_ref"].attrs = ds.proj.crs.to_cf()
+        return ds
 
 
 @pytest.mark.parametrize("clip", [False, True])
 def test_rasterize(clip, engine, dataset):
-    # Use engine-specific snapshots due to minor pixel boundary differences
-    suffix = f"_{engine}" if engine == "rusterize" else ""
+    # Use engine-specific snapshots due to pixel boundary differences:
+    # - rasterio: default (center-point) rasterization
+    # - rusterize: has its own boundary handling
+    # - exactextract: equivalent to all_touched=True (any coverage counts)
+    if engine == "rusterize":
+        suffix = "_rusterize"
+    elif engine == "exactextract":
+        suffix = "_all_touched"  # exactextract matches rasterio all_touched=True
+    else:
+        suffix = ""
     fname = f"rasterize_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
@@ -38,6 +49,11 @@ def test_rasterize(clip, engine, dataset):
     chunked = dataset.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
         drasterized = rasterize(chunked, world[["geometry"]], **kwargs)
+    assert drasterized.chunks is not None, "Output should be chunked when input is dask"
+    if not clip:
+        # When not clipping, chunks should match input exactly
+        expected_chunks = (chunked.chunksizes["latitude"], chunked.chunksizes["longitude"])
+        assert drasterized.chunks == expected_chunks
     xr.testing.assert_identical(rasterized, drasterized)
 
     if not clip:
@@ -45,14 +61,23 @@ def test_rasterize(clip, engine, dataset):
         dask_geoms = dgpd.from_geopandas(world, chunksize=5)
         with raise_if_dask_computes():
             drasterized = rasterize(chunked, dask_geoms[["geometry"]], **kwargs)
+        assert drasterized.chunks is not None, "Output should be chunked when input is dask"
         xr.testing.assert_identical(drasterized, snapshot)
 
 
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
 def test_geometry_mask(clip, invert, engine, dataset):
-    # Use engine-specific snapshots due to minor pixel boundary differences
-    suffix = f"_{engine}" if engine == "rusterize" else ""
+    # Use engine-specific snapshots due to pixel boundary differences:
+    # - rasterio: default (center-point) rasterization
+    # - rusterize: has its own boundary handling
+    # - exactextract: equivalent to all_touched=True (any coverage counts)
+    if engine == "rusterize":
+        suffix = "_rusterize"
+    elif engine == "exactextract":
+        suffix = "_all_touched"  # exactextract matches rasterio all_touched=True
+    else:
+        suffix = ""
     fname = f"geometry_mask_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
@@ -72,6 +97,11 @@ def test_geometry_mask(clip, invert, engine, dataset):
     chunked = dataset.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
         drasterized = geometry_mask(chunked, world[["geometry"]], **kwargs)
+    assert drasterized.chunks is not None, "Output should be chunked when input is dask"
+    if not clip:
+        # When not clipping, chunks should match input exactly
+        expected_chunks = (chunked.chunksizes["latitude"], chunked.chunksizes["longitude"])
+        assert drasterized.chunks == expected_chunks
     xr.testing.assert_identical(drasterized, snapshot)
 
     if not clip:
@@ -79,6 +109,7 @@ def test_geometry_mask(clip, invert, engine, dataset):
         dask_geoms = dgpd.from_geopandas(world, chunksize=5)
         with raise_if_dask_computes():
             drasterized = geometry_mask(chunked, dask_geoms[["geometry"]], **kwargs)
+        assert drasterized.chunks is not None, "Output should be chunked when input is dask"
         xr.testing.assert_identical(drasterized, snapshot)
 
 

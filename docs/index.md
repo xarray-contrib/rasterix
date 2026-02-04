@@ -20,6 +20,7 @@ raster_index/design_choices
 caption: Rasterizing
 hidden:
 ---
+rasterize/overview
 rasterize/rasterio
 rasterize/rusterize
 rasterize/geometry_mask
