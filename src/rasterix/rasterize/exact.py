@@ -432,21 +432,22 @@ def rasterize_geometries(
     # Initialize output with fill value
     out = np.full(shape, fill, dtype=dtype)
 
+    # Vectorized merging: concatenate all cell_ids and corresponding values
+    cell_id_arrays = result.cell_id.values
+    lens = np.array([len(c) for c in cell_id_arrays])
+    if lens.sum() == 0:
+        return out
+
+    all_cell_ids = np.concatenate([c for c in cell_id_arrays if len(c) > 0])
+    all_values = np.repeat(np.arange(len(geometries), dtype=dtype) + offset, lens)
+
     # Process based on merge algorithm
     if merge_alg == "replace":
-        # Later geometries overwrite earlier ones (MergeAlg.replace behavior)
-        for i in range(len(geometries)):
-            cell_ids = result.cell_id.values[i]
-            if len(cell_ids) > 0:
-                # Burn geometry index (with offset) into covered pixels
-                np.put(out, cell_ids, offset + i)
+        # Later geometries overwrite earlier ones (last write wins)
+        np.put(out, all_cell_ids, all_values)
     elif merge_alg == "add":
-        # Sum values where geometries overlap
-        for i in range(len(geometries)):
-            cell_ids = result.cell_id.values[i]
-            if len(cell_ids) > 0:
-                flat_out = out.ravel()
-                flat_out[cell_ids] += offset + i
+        # Sum values where geometries overlap (unbuffered addition)
+        np.add.at(out.ravel(), all_cell_ids, all_values)
     else:
         raise ValueError(f"Unsupported merge_alg: {merge_alg}. Must be 'replace' or 'add'.")
 
