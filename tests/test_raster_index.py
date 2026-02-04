@@ -706,3 +706,47 @@ def test_raster_index_from_stac_proj_metadata_with_crs():
     # Verify CRS was set
     assert index.crs is not None
     assert index.crs.to_epsg() == 32610
+
+
+@pytest.fixture
+def edge_case_ds():
+    """Create a 100x100 grid covering x=[0, 10], y=[-10, 0]."""
+    transform = Affine.translation(0, 0) * Affine.scale(0.1, -0.1)
+    ds = xr.Dataset({"data": (["y", "x"], np.ones((100, 100)))})
+    ds.coords["spatial_ref"] = ((), 0, {"GeoTransform": " ".join(map(str, transform.to_gdal()))})
+    return assign_index(ds, x_dim="x", y_dim="y")
+
+
+@pytest.mark.parametrize(
+    "coord,sel_slice,expected_slice",
+    [
+        # completely outside bounds
+        ("x", slice(-20, -10), slice(0, 0)),  # left of data
+        ("x", slice(20, 30), slice(100, 100)),  # right of data
+        ("y", slice(0, 10), slice(0, 0)),  # above data
+        ("y", slice(-30, -20), slice(100, 100)),  # below data
+        ("x", slice(-100, -50), slice(0, 0)),  # far left
+        ("x", slice(50, 100), slice(100, 100)),  # far right
+        # edge touching
+        ("x", slice(-10, 0), slice(0, 1)),  # touches left edge, returns 1 pixel
+        ("x", slice(10, 20), slice(100, 100)),  # at right edge, empty (pixels are left-inclusive)
+        ("y", slice(-1, 1), slice(10, 10)),  # outside top edge (y inverted), empty
+        # partial overlap
+        ("x", slice(-5, 5), slice(0, 51)),  # overlap left side
+        ("x", slice(5, 15), slice(50, 100)),  # overlap right side
+    ],
+)
+def test_sel_edge_cases(edge_case_ds, coord, sel_slice, expected_slice):
+    """Test sel returns correct slices for edge cases and out-of-bounds selections."""
+    result = edge_case_ds.xindexes[coord].sel({coord: sel_slice})
+    dim_indexer = result.dim_indexers[coord]
+
+    assert dim_indexer.start == expected_slice.start, (
+        f"Expected start {expected_slice.start}, got {dim_indexer.start}"
+    )
+    assert dim_indexer.stop == expected_slice.stop, (
+        f"Expected stop {expected_slice.stop}, got {dim_indexer.stop}"
+    )
+
+    # Verify slice is valid for array indexing
+    edge_case_ds.sel({coord: sel_slice})
