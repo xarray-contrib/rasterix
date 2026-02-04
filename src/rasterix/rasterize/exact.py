@@ -124,27 +124,31 @@ def np_coverage(
         # max_cells_in_memory=2*x.size * y.size
     )
 
-    lens = np.vectorize(len)(result.cell_id.values)
-    nnz = np.sum(lens)
-
-    # Notes on GCXS vs COO,  For N data points in 263 geoms by 4000 x by 4000 y
+    # Vectorized construction of COO sparse array
+    # Notes on GCXS vs COO: For N data points in 263 geoms by 4000 x by 4000 y
     # 1. GCXS cannot compress _all_ axes. This is relevant here.
     # 2. GCXS: indptr is 4000*4000 + 1, N per indices & N per data
     # 3. COO: 4*N
     # It is not obvious that there is much improvement to GCXS at least currently
-    geom_idxs = np.empty((nnz,), dtype=np.int64)
-    xy_idxs = np.empty((nnz,), dtype=np.int64)
-    data = np.empty((nnz,), dtype=dtype)
+    cell_id_arrays = result.cell_id.values
+    coverage_arrays = result.coverage.values
+    lens = np.array([len(c) for c in cell_id_arrays])
 
-    off = 0
-    for i in range(len(geometries)):
-        cell_id = result.cell_id.values[i]
-        if cell_id.size == 0:
-            continue
-        geom_idxs[off : off + cell_id.size] = i
-        xy_idxs[off : off + cell_id.size] = cell_id
-        data[off : off + cell_id.size] = result.coverage.values[i]
-        off += cell_id.size
+    if lens.sum() == 0:
+        # No coverage - return empty sparse array
+        return sparse.COO(
+            (np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)),
+            data=np.array([], dtype=dtype),
+            sorted=True,
+            fill_value=0,
+            shape=(len(geometries), *shape),
+        )
+
+    # Vectorized: repeat geometry indices, concatenate cell_ids and coverage values
+    geom_idxs = np.repeat(np.arange(len(geometries)), lens)
+    xy_idxs = np.concatenate([c for c in cell_id_arrays if len(c) > 0])
+    data = np.concatenate([c for c in coverage_arrays if len(c) > 0]).astype(dtype)
+
     return sparse.COO(
         (geom_idxs, *np.unravel_index(xy_idxs, shape=shape)),
         data=data,
