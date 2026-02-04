@@ -312,9 +312,12 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
         label = labels[coord_name]
         transform = self.axis_transform
         if isinstance(label, slice):
+            # Use 'is None' check instead of 'or' to correctly handle 0 values
             label = slice(
-                label.start or transform.forward({coord_name: 0})[coord_name],
-                label.stop or transform.forward({coord_name: transform.size})[coord_name],
+                transform.forward({coord_name: 0})[coord_name] if label.start is None else label.start,
+                transform.forward({coord_name: transform.size})[coord_name]
+                if label.stop is None
+                else label.stop,
                 label.step,
             )
             if label.step is None:
@@ -322,8 +325,12 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
                 pos = self.transform.reverse({coord_name: np.array([label.start, label.stop])})
                 # np.round rounds to even, this way we round upwards
                 pos = np.floor(pos[self.dim] + 0.5).astype("int")
-                new_start = max(pos[0], 0)
-                new_stop = min(pos[1] + 1, self.axis_transform.size)
+                size = self.axis_transform.size
+                # Clamp both start and stop to valid range [0, size]
+                new_start = max(min(pos[0], size), 0)
+                new_stop = max(min(pos[1] + 1, size), 0)
+                # Ensure stop >= start (empty slice if selection is completely outside bounds)
+                new_stop = max(new_stop, new_start)
                 return IndexSelResult({self.dim: slice(new_start, new_stop)})
             else:
                 # otherwise convert to basic (array) indexing
