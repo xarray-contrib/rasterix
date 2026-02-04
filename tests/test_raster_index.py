@@ -566,12 +566,19 @@ def test_assign_index_with_stac_proj_transform_9_elements():
     assert actual_affine == expected_affine
 
 
-def test_assign_index_with_spatial_zarr_convention():
+@pytest.mark.parametrize(
+    "convention_spec",
+    [
+        {"name": "spatial:"},  # optional
+        {"uuid": "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4"},  # mandatory
+    ],
+)
+def test_assign_index_with_spatial_zarr_convention(convention_spec: dict[str, str]):
     da = xr.DataArray(
         np.ones((100, 100)),
         dims=("y", "x"),
         attrs={
-            "zarr_conventions": [{"name": "spatial:"}],
+            "zarr_conventions": [convention_spec],
             "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
         },
     )
@@ -591,7 +598,7 @@ def test_assign_index_with_spatial_zarr_convention():
     assert "spatial:transform" not in result.attrs
 
 
-def test_assign_index_with_spatual_zarr_convention_too_few_raises():
+def test_assign_index_with_spatial_zarr_convention_too_few_raises():
     da = xr.DataArray(
         np.ones((100, 100)),
         dims=("y", "x"),
@@ -605,7 +612,7 @@ def test_assign_index_with_spatual_zarr_convention_too_few_raises():
         assign_index(da)
 
 
-def test_assign_index_with_spatual_zarr_convention_transform_type_not_implemented():
+def test_assign_index_with_spatial_zarr_convention_transform_type_not_implemented():
     da = xr.DataArray(
         np.ones((100, 100)),
         dims=("y", "x"),
@@ -620,7 +627,7 @@ def test_assign_index_with_spatual_zarr_convention_transform_type_not_implemente
         assign_index(da)
 
 
-def test_assign_index_with_spatual_zarr_convention_registration_not_implemented():
+def test_assign_index_with_spatial_zarr_convention_registration_not_implemented():
     da = xr.DataArray(
         np.ones((100, 100)),
         dims=("y", "x"),
@@ -777,12 +784,19 @@ def test_raster_index_from_stac_proj_metadata_with_crs():
     assert index.crs.to_epsg() == 32610
 
 
-def test_assign_index_proj_zarr_convention_code():
+@pytest.mark.parametrize(
+    "convention_spec",
+    [
+        {"name": "proj:"},  # optional
+        {"uuid": "f17cb550-5864-4468-aeb7-f3180cfb622f"},  # mandatory
+    ],
+)
+def test_assign_index_proj_zarr_convention_code(convention_spec: dict[str, str]):
     ds = xr.DataArray(
         np.ones((3, 4)),
         dims=("y", "x"),
         attrs={
-            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "zarr_conventions": [convention_spec, {"name": "spatial:"}],
             "proj:code": "EPSG:4326",
             "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
         },

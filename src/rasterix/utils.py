@@ -11,6 +11,9 @@ from rasterix.lib import (
     logger,
 )
 
+# https://github.com/zarr-conventions/geo-proj
+_ZARR_GEO_PROJ_CONVENTION_UUID = "f17cb550-5864-4468-aeb7-f3180cfb622f"
+
 
 def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
     grid_mapping_var = None
@@ -141,7 +144,9 @@ def _has_proj_zarr_convention(metadata: _ZarrProjMetadata) -> bool:
     if not zarr_conventions:
         return False
     for entry in zarr_conventions:
-        if isinstance(entry, dict) and entry.get("name") == "proj:":
+        if isinstance(entry, dict) and (
+            entry.get("uuid") == _ZARR_GEO_PROJ_CONVENTION_UUID or entry.get("name") == "proj:"
+        ):
             return True
     return False
 

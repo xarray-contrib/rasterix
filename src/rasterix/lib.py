@@ -5,6 +5,10 @@ from typing import NotRequired, TypedDict
 
 from affine import Affine
 
+# https://github.com/zarr-conventions/spatial
+_ZARR_SPATIAL_CONVENTION_UUID = "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4"
+
+
 # Define TRACE level (lower than DEBUG)
 TRACE = 5
 logging.addLevelName(TRACE, "TRACE")
@@ -125,7 +129,9 @@ def _has_spatial_zarr_convention(metadata: _ZarrSpatialMetadata) -> bool:
     if not zarr_conventions:
         return False
     for entry in zarr_conventions:
-        if isinstance(entry, dict) and entry.get("name") == "spatial:":
+        if isinstance(entry, dict) and (
+            entry.get("uuid") == _ZARR_SPATIAL_CONVENTION_UUID or entry.get("name") == "spatial:"
+        ):
             return True
     return False
 
