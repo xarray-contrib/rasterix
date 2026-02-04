@@ -369,7 +369,7 @@ def rasterize_geometries(
     affine,
     offset: int,
     all_touched: bool = False,
-    merge_alg: str = "last",
+    merge_alg: str = "replace",
     fill: Any = 0,
     **kwargs,
 ) -> np.ndarray:
@@ -395,7 +395,7 @@ def rasterize_geometries(
         If True, all pixels touched by geometries will be burned in.
         Note: exactextract does not support this parameter directly.
     merge_alg : str
-        Merge algorithm: "last" (replace) or "sum" (add).
+        Merge algorithm: "replace" or "add".
     fill : Any
         Fill value for pixels not covered by any geometry.
     **kwargs
@@ -433,14 +433,14 @@ def rasterize_geometries(
     out = np.full(shape, fill, dtype=dtype)
 
     # Process based on merge algorithm
-    if merge_alg == "last":
+    if merge_alg == "replace":
         # Later geometries overwrite earlier ones (MergeAlg.replace behavior)
         for i in range(len(geometries)):
             cell_ids = result.cell_id.values[i]
             if len(cell_ids) > 0:
                 # Burn geometry index (with offset) into covered pixels
                 np.put(out, cell_ids, offset + i)
-    elif merge_alg == "sum":
+    elif merge_alg == "add":
         # Sum values where geometries overlap
         for i in range(len(geometries)):
             cell_ids = result.cell_id.values[i]
@@ -448,7 +448,7 @@ def rasterize_geometries(
                 flat_out = out.ravel()
                 flat_out[cell_ids] += offset + i
     else:
-        raise ValueError(f"Unsupported merge_alg: {merge_alg}. Must be 'last' or 'sum'.")
+        raise ValueError(f"Unsupported merge_alg: {merge_alg}. Must be 'replace' or 'add'.")
 
     return out
 

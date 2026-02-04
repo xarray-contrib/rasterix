@@ -44,7 +44,7 @@ def rasterize_geometries(
     affine: Affine,
     offset: int,
     all_touched: bool = False,
-    merge_alg: str = "last",
+    merge_alg: str = "replace",
     fill: Any = 0,
     **kwargs,
 ) -> np.ndarray:
@@ -67,7 +67,7 @@ def rasterize_geometries(
         If True, all pixels touched by geometries will be burned in.
         Note: rusterize may not support this parameter directly.
     merge_alg : str
-        Merge algorithm: "last", "sum", "first", "min", "max", "count", "any".
+        Merge algorithm: "replace" or "add".
     fill : Any
         Fill value for pixels not covered by any geometry.
     **kwargs
@@ -94,13 +94,18 @@ def rasterize_geometries(
 
     extent, (xres, yres) = _affine_to_extent_and_res(affine, shape)
 
+    # Translate merge_alg to rusterize's native names
+    rusterize_merge_alg = {"replace": "last", "add": "sum"}.get(merge_alg)
+    if rusterize_merge_alg is None:
+        raise ValueError(f"Unsupported merge_alg: {merge_alg}. Must be 'replace' or 'add'.")
+
     result = rusterize(
         gdf,
         res=(xres, yres),
         extent=extent,
         out_shape=shape,
         field="value",
-        fun=merge_alg,
+        fun=rusterize_merge_alg,
         background=fill,
         encoding="numpy",
         dtype=str(dtype),

@@ -96,6 +96,10 @@ def _get_mask_funcs(engine: Engine):
 
 def _normalize_merge_alg(merge_alg: str, engine: Engine) -> Any:
     """Normalize merge_alg string to engine-specific value."""
+    valid_values = ("replace", "add")
+    if merge_alg not in valid_values:
+        raise ValueError(f"Invalid merge_alg {merge_alg!r}. Must be one of: {list(valid_values)}")
+
     if engine == "rasterio":
         from rasterio.features import MergeAlg
 
@@ -103,18 +107,10 @@ def _normalize_merge_alg(merge_alg: str, engine: Engine) -> Any:
             "replace": MergeAlg.replace,
             "add": MergeAlg.add,
         }
-        if merge_alg not in mapping:
-            raise ValueError(f"Invalid merge_alg {merge_alg!r}. Must be one of: {list(mapping.keys())}")
         return mapping[merge_alg]
     else:
-        # rusterize and exactextract use the same names
-        mapping = {
-            "replace": "last",
-            "add": "sum",
-        }
-        if merge_alg not in mapping:
-            raise ValueError(f"Invalid merge_alg {merge_alg!r}. Must be one of: {list(mapping.keys())}")
-        return mapping[merge_alg]
+        # rusterize and exactextract handle the translation internally
+        return merge_alg
 
 
 def replace_values(array: np.ndarray, to, *, from_=0) -> np.ndarray:
