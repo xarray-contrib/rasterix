@@ -149,9 +149,10 @@ def rasterize(
         Xarray object whose grid to rasterize onto.
     geometries : GeoDataFrame
         Either a geopandas or dask_geopandas GeoDataFrame.
-    engine : {"rasterio", "rusterize"} or None
+    engine : {"rasterio", "rusterize", "exactextract"} or None
         Rasterization engine to use. If None, auto-detects based on installed
         packages (prefers rusterize if available, falls back to rasterio).
+        Note: "exactextract" must be explicitly requested and is not auto-selected.
     xdim : str
         Name of the "x" dimension on ``obj``.
     ydim : str
@@ -159,6 +160,7 @@ def rasterize(
     all_touched : bool
         If True, all pixels touched by geometries will be burned in.
         If False, only pixels whose center is within the geometry are burned.
+        Note: Not supported by rusterize or exactextract engines.
     merge_alg : {"replace", "add"}
         Merge algorithm when geometries overlap.
         - "replace": later geometries overwrite earlier ones
@@ -180,12 +182,27 @@ def rasterize(
     Notes
     -----
     Different engines may produce slightly different results at pixel boundaries
-    due to differences in how they handle geometry-pixel intersection tests.
+    due to differences in how they handle geometry-pixel intersection tests:
+
+    - **rasterio**: Uses GDAL's rasterization. By default (``all_touched=False``),
+      only pixels whose center falls within the geometry are burned. With
+      ``all_touched=True``, any pixel that intersects the geometry is burned.
+      Requires GDAL.
+
+    - **rusterize**: A Rust-based rasterization engine. Does not require GDAL.
+      Does not support ``all_touched=True``.
+
+    - **exactextract**: Uses the exactextract library for precise sub-pixel
+      coverage computation. Any pixel with non-zero coverage is burned, which
+      produces results equivalent to rasterio's ``all_touched=True``. Does not
+      require GDAL. Does not support ``all_touched=True`` (raises NotImplementedError)
+      since this is already its default behavior.
 
     See Also
     --------
     rasterio.features.rasterize
     rusterize.rusterize
+    exactextract.exact_extract
     """
     if xdim not in obj.dims or ydim not in obj.dims:
         raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
@@ -294,15 +311,17 @@ def geometry_mask(
         Xarray object used to extract the grid.
     geometries : GeoDataFrame or DaskGeoDataFrame
         Geometries used for masking.
-    engine : {"rasterio", "rusterize"} or None
+    engine : {"rasterio", "rusterize", "exactextract"} or None
         Rasterization engine to use. If None, auto-detects based on installed
         packages (prefers rusterize if available, falls back to rasterio).
+        Note: "exactextract" must be explicitly requested and is not auto-selected.
     xdim : str
         Name of the "x" dimension on ``obj``.
     ydim : str
         Name of the "y" dimension on ``obj``.
     all_touched : bool
         If True, all pixels touched by geometries will be included in mask.
+        Note: Not supported by rusterize or exactextract engines.
     invert : bool
         If True, pixels inside geometries are True (unmasked).
         If False (default), pixels inside geometries are False (masked).
@@ -320,8 +339,14 @@ def geometry_mask(
     DataArray
         2D boolean DataArray mask.
 
+    Notes
+    -----
+    See :func:`rasterize` for details on engine differences. The exactextract
+    engine produces results equivalent to rasterio's ``all_touched=True``.
+
     See Also
     --------
+    rasterize
     rasterio.features.geometry_mask
     """
     if xdim not in obj.dims or ydim not in obj.dims:
@@ -410,15 +435,17 @@ def geometry_clip(
         Xarray object to clip.
     geometries : GeoDataFrame or DaskGeoDataFrame
         Geometries used for clipping.
-    engine : {"rasterio", "rusterize"} or None
+    engine : {"rasterio", "rusterize", "exactextract"} or None
         Rasterization engine to use. If None, auto-detects based on installed
         packages (prefers rusterize if available, falls back to rasterio).
+        Note: "exactextract" must be explicitly requested and is not auto-selected.
     xdim : str
         Name of the "x" dimension on ``obj``.
     ydim : str
         Name of the "y" dimension on ``obj``.
     all_touched : bool
         If True, all pixels touched by geometries will be included.
+        Note: Not supported by rusterize or exactextract engines.
     invert : bool
         If True, preserve values outside the geometry (invert the clip).
         If False (default), preserve values inside the geometry.
@@ -436,8 +463,15 @@ def geometry_clip(
     DataArray
         Clipped DataArray with values outside geometries set to NaN.
 
+    Notes
+    -----
+    See :func:`rasterize` for details on engine differences. The exactextract
+    engine produces results equivalent to rasterio's ``all_touched=True``, while
+    rusterize may produce slightly different results at pixel boundaries.
+
     See Also
     --------
+    rasterize
     geometry_mask
     rasterio.features.geometry_mask
     """
