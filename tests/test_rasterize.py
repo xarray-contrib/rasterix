@@ -8,6 +8,8 @@ from xarray.tests import raise_if_dask_computes
 
 from rasterix.rasterize import geometry_clip, geometry_mask, rasterize
 
+pytestmark = pytest.mark.filterwarnings("ignore:variable '.*' has non-conforming '_FillValue'")
+
 
 @pytest.fixture
 def dataset():
