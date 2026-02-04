@@ -19,8 +19,16 @@ def dataset():
 
 @pytest.mark.parametrize("clip", [False, True])
 def test_rasterize(clip, engine, dataset):
-    # Use engine-specific snapshots due to minor pixel boundary differences
-    suffix = f"_{engine}" if engine in ("rusterize", "exactextract") else ""
+    # Use engine-specific snapshots due to pixel boundary differences:
+    # - rasterio: default (center-point) rasterization
+    # - rusterize: has its own boundary handling
+    # - exactextract: equivalent to all_touched=True (any coverage counts)
+    if engine == "rusterize":
+        suffix = "_rusterize"
+    elif engine == "exactextract":
+        suffix = "_all_touched"  # exactextract matches rasterio all_touched=True
+    else:
+        suffix = ""
     fname = f"rasterize_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
@@ -51,8 +59,16 @@ def test_rasterize(clip, engine, dataset):
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
 def test_geometry_mask(clip, invert, engine, dataset):
-    # Use engine-specific snapshots due to minor pixel boundary differences
-    suffix = f"_{engine}" if engine in ("rusterize", "exactextract") else ""
+    # Use engine-specific snapshots due to pixel boundary differences:
+    # - rasterio: default (center-point) rasterization
+    # - rusterize: has its own boundary handling
+    # - exactextract: equivalent to all_touched=True (any coverage counts)
+    if engine == "rusterize":
+        suffix = "_rusterize"
+    elif engine == "exactextract":
+        suffix = "_all_touched"  # exactextract matches rasterio all_touched=True
+    else:
+        suffix = ""
     fname = f"geometry_mask_snapshot{suffix}.nc"
     try:
         snapshot = xr.load_dataarray(fname)
