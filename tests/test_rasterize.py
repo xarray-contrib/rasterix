@@ -46,6 +46,11 @@ def test_rasterize(clip, engine, dataset):
     chunked = dataset.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
         drasterized = rasterize(chunked, world[["geometry"]], **kwargs)
+    assert drasterized.chunks is not None, "Output should be chunked when input is dask"
+    if not clip:
+        # When not clipping, chunks should match input exactly
+        expected_chunks = (chunked.chunksizes["latitude"], chunked.chunksizes["longitude"])
+        assert drasterized.chunks == expected_chunks
     xr.testing.assert_identical(rasterized, drasterized)
 
     if not clip:
@@ -53,6 +58,7 @@ def test_rasterize(clip, engine, dataset):
         dask_geoms = dgpd.from_geopandas(world, chunksize=5)
         with raise_if_dask_computes():
             drasterized = rasterize(chunked, dask_geoms[["geometry"]], **kwargs)
+        assert drasterized.chunks is not None, "Output should be chunked when input is dask"
         xr.testing.assert_identical(drasterized, snapshot)
 
 
@@ -88,6 +94,11 @@ def test_geometry_mask(clip, invert, engine, dataset):
     chunked = dataset.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
         drasterized = geometry_mask(chunked, world[["geometry"]], **kwargs)
+    assert drasterized.chunks is not None, "Output should be chunked when input is dask"
+    if not clip:
+        # When not clipping, chunks should match input exactly
+        expected_chunks = (chunked.chunksizes["latitude"], chunked.chunksizes["longitude"])
+        assert drasterized.chunks == expected_chunks
     xr.testing.assert_identical(drasterized, snapshot)
 
     if not clip:
@@ -95,6 +106,7 @@ def test_geometry_mask(clip, invert, engine, dataset):
         dask_geoms = dgpd.from_geopandas(world, chunksize=5)
         with raise_if_dask_computes():
             drasterized = geometry_mask(chunked, dask_geoms[["geometry"]], **kwargs)
+        assert drasterized.chunks is not None, "Output should be chunked when input is dask"
         xr.testing.assert_identical(drasterized, snapshot)
 
 
