@@ -11,10 +11,11 @@ from rasterix.rasterize import geometry_clip, geometry_mask, rasterize
 
 @pytest.fixture
 def dataset():
-    ds = xr.tutorial.open_dataset("eraint_uvz")
-    ds = ds.proj.assign_crs(spatial_ref="epsg:4326")
-    ds["spatial_ref"].attrs = ds.proj.crs.to_cf()
-    return ds
+    with xr.tutorial.open_dataset("eraint_uvz") as ds:
+        ds = ds.load()
+        ds = ds.proj.assign_crs(spatial_ref="epsg:4326")
+        ds["spatial_ref"].attrs = ds.proj.crs.to_cf()
+        return ds
 
 
 @pytest.mark.parametrize("clip", [False, True])
