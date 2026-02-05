@@ -35,6 +35,10 @@ rasterix.get_options()
 
 Consider two tiles that should concatenate along X, but have a tiny difference in their X resolution (`926.625433054...` vs `926.625433055...`):
 
+```{note}
+These transforms come from a real dataset [MODIS/Terra Vegetation Indices Monthly L3 Global 1km SIN Grid V061](https://www.earthdata.nasa.gov/data/catalog/lpcloud-mod13a3-061#variables)!
+```
+
 ```{code-cell}
 import pyproj
 import numpy as np
@@ -60,17 +64,50 @@ dsets = [
 dsets = list(map(rasterix.assign_index, dsets))
 ```
 
-This works with the default tolerance:
+The relative difference here is ~9e-13, which is handled by the default tolerance:
 
 ```{code-cell}
 xr.concat(dsets, dim="x")
 ```
 
-For larger differences, increase the tolerance using {py:func}`set_options` as a context manager:
+### Larger differences
+
+With larger differences (~1e-8 relative), the default tolerance is not enough:
 
 ```{code-cell}
-with rasterix.set_options(transform_rtol=1e-9):
-    result = xr.concat(dsets, dim="x")
+transforms_noisy = [
+    "0.0 1.0 0.0 1.0 0.0 -1.0",
+    "10.0 1.00000001 0.0 1.0 0.0 -1.0",
+]
+
+dsets_noisy = [
+    xr.Dataset(
+        {"temp": (("y", "x"), np.ones((10, 10)), {"grid_mapping": "spatial_ref"})},
+        coords={
+            "spatial_ref": (
+                (),
+                0,
+                pyproj.CRS.from_epsg(4326).to_cf() | {"GeoTransform": transform},
+            )
+        },
+    )
+    for transform in transforms_noisy
+]
+dsets_noisy = list(map(rasterix.assign_index, dsets_noisy))
+```
+
+```{code-cell}
+---
+tags: [raises-exception]
+---
+xr.concat(dsets_noisy, dim="x")
+```
+
+Increase the tolerance using {py:func}`set_options` as a context manager:
+
+```{code-cell}
+with rasterix.set_options(transform_rtol=1e-7):
+    result = xr.concat(dsets_noisy, dim="x")
 result
 ```
 
@@ -79,6 +116,7 @@ result
 The same tolerance applies to {py:func}`xarray.align`:
 
 ```{code-cell}
-aligned = xr.align(*dsets, join="outer")
+with rasterix.set_options(transform_rtol=1e-7):
+    aligned = xr.align(*dsets_noisy, join="outer")
 aligned[0]
 ```

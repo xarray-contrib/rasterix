@@ -1,4 +1,4 @@
-# Rasterization Overview
+# Overview
 
 Rasterix provides dask-aware tools for converting vector geometries to raster data.
 
