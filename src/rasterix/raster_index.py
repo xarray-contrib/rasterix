@@ -912,6 +912,11 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         return new_index
 
     def join(self, other: RasterIndex, how: JoinOptions = "inner") -> RasterIndex:
+        """Join two RasterIndexes by computing the union or intersection of their bounding boxes.
+
+        Transform compatibility is checked using the tolerance configured via
+        :py:func:`rasterix.set_options` (``transform_rtol`` and ``transform_atol``).
+        """
         if not self._proj_crs_equals(cast(CRSAwareIndex, other), allow_none=True):
             raise ValueError(
                 "raster indexes on objects to align do not have the same CRS\n"

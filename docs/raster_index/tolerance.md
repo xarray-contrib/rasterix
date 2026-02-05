@@ -113,10 +113,16 @@ result
 
 ## Alignment
 
-The same tolerance applies to {py:func}`xarray.align`:
+The same tolerance applies to {py:func}`xarray.align`, including `join="exact"`:
 
 ```{code-cell}
 with rasterix.set_options(transform_rtol=1e-7):
     aligned = xr.align(*dsets_noisy, join="outer")
 aligned[0]
+```
+
+```{code-cell}
+with rasterix.set_options(transform_rtol=1e-7):
+    exact = xr.align(*dsets_noisy, join="exact")
+exact[0]
 ```
