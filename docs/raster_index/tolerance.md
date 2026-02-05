@@ -113,7 +113,7 @@ result
 
 ## Alignment
 
-The same tolerance applies to {py:func}`xarray.align`, including `join="exact"`:
+The same tolerance applies to {py:func}`xarray.align`:
 
 ```{code-cell}
 with rasterix.set_options(transform_rtol=1e-7):
@@ -121,8 +121,32 @@ with rasterix.set_options(transform_rtol=1e-7):
 aligned[0]
 ```
 
+For `join="exact"`, tolerance helps when two datasets cover the same area but differ only in their resolution. Here both datasets have origin `0.0` and 10 pixels, but slightly different spacing:
+
+```{code-cell}
+transforms_exact = [
+    "0.0 1.0 0.0 1.0 0.0 -1.0",
+    "0.0 1.00000001 0.0 1.0 0.0 -1.0",
+]
+
+dsets_exact = [
+    xr.Dataset(
+        {"temp": (("y", "x"), np.ones((10, 10)), {"grid_mapping": "spatial_ref"})},
+        coords={
+            "spatial_ref": (
+                (),
+                0,
+                pyproj.CRS.from_epsg(4326).to_cf() | {"GeoTransform": transform},
+            )
+        },
+    )
+    for transform in transforms_exact
+]
+dsets_exact = list(map(rasterix.assign_index, dsets_exact))
+```
+
 ```{code-cell}
 with rasterix.set_options(transform_rtol=1e-7):
-    exact = xr.align(*dsets_noisy, join="exact")
+    exact = xr.align(*dsets_exact, join="exact")
 exact[0]
 ```
