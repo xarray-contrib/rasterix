@@ -15,6 +15,7 @@ kernelspec:
 ---
 tags: [remove-cell]
 ---
+%xmode minimal
 import xarray as xr
 xr.set_options(display_expand_indexes=True);
 ```

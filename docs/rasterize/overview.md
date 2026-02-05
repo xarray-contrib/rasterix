@@ -6,7 +6,7 @@ Rasterix provides dask-aware tools for converting vector geometries to raster da
 
 ### rasterize
 
-{func}`~rasterix.rasterize.rasterize` burns geometry indices into a raster. Each pixel is assigned an integer corresponding to the geometry that covers it.
+{py:func}`~rasterix.rasterize.rasterize` burns geometry indices into a raster. Each pixel is assigned an integer corresponding to the geometry that covers it.
 
 ```python
 from rasterix.rasterize import rasterize
@@ -22,7 +22,7 @@ Use cases:
 
 ### geometry_mask
 
-{func}`~rasterix.rasterize.geometry_mask` creates a boolean mask indicating which pixels fall within any of the provided geometries.
+{py:func}`~rasterix.rasterize.geometry_mask` creates a boolean mask indicating which pixels fall within any of the provided geometries.
 
 ```python
 from rasterix.rasterize import geometry_mask
@@ -37,7 +37,7 @@ Use cases:
 
 ### geometry_clip
 
-{func}`~rasterix.rasterize.geometry_clip` clips raster data to geometries, setting pixels outside the geometries to NaN.
+{py:func}`~rasterix.rasterize.geometry_clip` clips raster data to geometries, setting pixels outside the geometries to NaN.
 
 ```python
 from rasterix.rasterize import geometry_clip
@@ -96,7 +96,7 @@ result = rasterize(
 
 ## Coverage Calculation
 
-In addition to the rasterization functions above, {func}`~rasterix.rasterize.exact.coverage` computes the precise fractional area of each pixel covered by each geometry. This is only available with the exactextract engine.
+In addition to the rasterization functions above, {py:func}`~rasterix.rasterize.exact.coverage` computes the precise fractional area of each pixel covered by each geometry. This is only available with the exactextract engine.
 
 ```python
 from rasterix.rasterize.exact import coverage
