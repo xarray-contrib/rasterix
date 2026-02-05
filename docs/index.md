@@ -15,6 +15,7 @@ raster_index/aligning
 raster_index/combining
 raster_index/tolerance
 raster_index/design_choices
+raster_index/heuristics
 ```
 
 ```{toctree}

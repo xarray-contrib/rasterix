@@ -40,6 +40,8 @@ The easiest way to create a RasterIndex is using {py:func}`assign_index`. This f
 - [Zarr Spatial Convention](https://zarr-specs.readthedocs.io/en/latest/v3/conventions/spatial/v1.0.html) (`spatial:transform`)
 - 1D coordinate arrays (common in NetCDF files)
 
+See {doc}`/raster_index/heuristics` for the full priority order and detection logic.
+
 ```{code-cell}
 import pyproj
 
