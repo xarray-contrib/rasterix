@@ -1,5 +1,5 @@
 ```{eval-rst}
-.. currentmodule:: rasterix
+.. currentmodule:: rasterix.raster_index
 ```
 
 # Design Choices
@@ -55,7 +55,7 @@ GDAL _chooses_ to track the affine transform using a `GeoTransform` attribute on
 the grid mapping variable. Thus, {py:class}`RasterIndex` _cannot_ keep the `"GeoTransform"` attribute on `"spatial_ref"` up-to-date
 because it does not control it.
 
-Thus, {py:func}`assign_index` will delete the `"GeoTransform"` attribute on the grid mapping variable if it is detected, after using it
+Thus, {py:func}`~rasterix.assign_index` will delete the `"GeoTransform"` attribute on the grid mapping variable if it is detected, after using it
 to construct the affine matrix.
 
 If you wish to extract the GeoTransform attribute to write it to a location of your choosing use {py:meth}`RasterIndex.as_geotransform`.
