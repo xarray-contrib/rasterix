@@ -12,6 +12,7 @@ raster_index/indexing
 raster_index/crs
 raster_index/aligning
 raster_index/combining
+raster_index/tolerance
 raster_index/design_choices
 ```
 
