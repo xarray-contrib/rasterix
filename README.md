@@ -7,7 +7,7 @@
 
 <img src="_static/rasterix.png" width="300">
 
-This WIP project contains tools to make it easier to analyze raster data with Xarray.
+This project contains tools to make it easier to analyze raster data with Xarray.
 It currently has two pieces.
 
 1. `RasterIndex` for indexing using the affine transform recorded in GeoTIFFs.
@@ -17,7 +17,7 @@ Our intent is to provide reusable building blocks for the many sub-ecosystems ar
 
 ## Installing
 
-`rasterix` alpha releases are available on pypi
+`rasterix` releases are available on pypi
 
 ```
 pip install rasterix

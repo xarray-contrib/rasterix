@@ -24,6 +24,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "affine",
@@ -37,12 +38,14 @@ dynamic=["version"]
 [project.optional-dependencies]
 dask = ["dask-geopandas"]
 rasterize = ["rasterio"]
+rusterize = ["rusterize"]
 exactextract = ["exactextract", "sparse"]
 docs = [
   "geodatasets",
   "pooch",
   "dask-geopandas",
   "rasterio",
+  "rusterize",
   "rioxarray",
   "exactextract",
   "sparse",
@@ -90,19 +93,49 @@ test = [
     "netCDF4",
     "pooch",
     "pytest",
-    "pytest",
     "pytest-cov",
     "pytest-xdist",
     "rasterio",
     "sparse",
     "xarray @ git+https://github.com/pydata/xarray.git@26ccc7f8f014f29c551fd566a04d6e9f878c0b0b", # https://github.com/pydata/xarray/pull/10980
 ]
+test-rusterize = [
+    "coverage",
+    "dask-geopandas",
+    "exactextract",
+    "geodatasets",
+    "hypothesis",
+    "netCDF4",
+    "pooch",
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "rusterize",
+    "sparse",
+    "xarray @ git+https://github.com/pydata/xarray.git@26ccc7f8f014f29c551fd566a04d6e9f878c0b0b", # https://github.com/pydata/xarray/pull/10980
+]
+test-all = [
+    "coverage",
+    "dask-geopandas",
+    "exactextract",
+    "geodatasets",
+    "hypothesis",
+    "netCDF4",
+    "pooch",
+    "pytest",
+    "pytest-cov",
+    "pytest-xdist",
+    "rasterio",
+    "rusterize",
+    "sparse",
+    "xarray",
+]
 
 [tool.hatch.envs.test]
 dependency-groups = ["test"]
 
 [[tool.hatch.envs.test.matrix]]
-python = ["3.11", "3.13"]
+python = ["3.11", "3.14"]
 
 [tool.hatch.envs.test.scripts]
 run-coverage = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
@@ -110,6 +143,32 @@ run-coverage-html = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-r
 run-pytest = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 run-mypy = "mypy src"
+list-env = "pip list"
+
+[tool.hatch.envs.test-rusterize]
+dependency-groups = ["test-rusterize"]
+
+[[tool.hatch.envs.test-rusterize.matrix]]
+python = ["3.11", "3.14"]
+
+[tool.hatch.envs.test-rusterize.scripts]
+run-coverage = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+run-pytest = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
+list-env = "pip list"
+
+[tool.hatch.envs.test-all]
+dependency-groups = ["test-all"]
+
+[[tool.hatch.envs.test-all.matrix]]
+python = ["3.13"]
+
+[tool.hatch.envs.test-all.scripts]
+run-coverage = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report xml --cov=src --junitxml=junit.xml -o junit_family=legacy"
+run-coverage-html = "pytest -nauto --cov-config=pyproject.toml --cov=pkg --cov-report html --cov=src"
+run-pytest = "run-coverage --no-cov"
+run-verbose = "run-coverage --verbose"
 list-env = "pip list"
 
 [tool.ruff.lint]

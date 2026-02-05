@@ -28,6 +28,43 @@ CoverageWeights = Literal["area_spherical_m2", "area_cartesian", "area_spherical
 __all__ = ["coverage"]
 
 
+def affine_to_raster_source(affine, shape: tuple[int, int], *, srs_wkt: str | None) -> NumPyRasterSource:
+    """Convert affine transform and shape directly to a NumPyRasterSource.
+
+    Parameters
+    ----------
+    affine : Affine
+        Affine transform for the raster grid (top-left corner convention).
+    shape : tuple[int, int]
+        Shape of the raster (nrows, ncols).
+    srs_wkt : str or None
+        Well-known text representation of the spatial reference system.
+
+    Returns
+    -------
+    NumPyRasterSource
+        A raster source with the specified extent for use with exactextract.
+    """
+    nrows, ncols = shape
+    # Compute the four corners using the affine transform
+    # The affine maps pixel coordinates to world coordinates
+    # Top-left: (0, 0), Top-right: (ncols, 0), Bottom-left: (0, nrows), Bottom-right: (ncols, nrows)
+    x0, y0 = affine * (0, 0)  # top-left
+    x1, y1 = affine * (ncols, nrows)  # bottom-right
+
+    xmin, xmax = min(x0, x1), max(x0, x1)
+    ymin, ymax = min(y0, y1), max(y0, y1)
+
+    return NumPyRasterSource(
+        np.broadcast_to([1], shape),
+        xmin=xmin,
+        xmax=xmax,
+        ymin=ymin,
+        ymax=ymax,
+        srs_wkt=srs_wkt,
+    )
+
+
 def xy_to_raster_source(x: np.ndarray, y: np.ndarray, *, srs_wkt: str | None) -> NumPyRasterSource:
     assert x.ndim == 1
     assert y.ndim == 1
@@ -87,27 +124,31 @@ def np_coverage(
         # max_cells_in_memory=2*x.size * y.size
     )
 
-    lens = np.vectorize(len)(result.cell_id.values)
-    nnz = np.sum(lens)
-
-    # Notes on GCXS vs COO,  For N data points in 263 geoms by 4000 x by 4000 y
+    # Vectorized construction of COO sparse array
+    # Notes on GCXS vs COO: For N data points in 263 geoms by 4000 x by 4000 y
     # 1. GCXS cannot compress _all_ axes. This is relevant here.
     # 2. GCXS: indptr is 4000*4000 + 1, N per indices & N per data
     # 3. COO: 4*N
     # It is not obvious that there is much improvement to GCXS at least currently
-    geom_idxs = np.empty((nnz,), dtype=np.int64)
-    xy_idxs = np.empty((nnz,), dtype=np.int64)
-    data = np.empty((nnz,), dtype=dtype)
+    cell_id_arrays = result.cell_id.values
+    coverage_arrays = result.coverage.values
+    lens = np.array([len(c) for c in cell_id_arrays])
 
-    off = 0
-    for i in range(len(geometries)):
-        cell_id = result.cell_id.values[i]
-        if cell_id.size == 0:
-            continue
-        geom_idxs[off : off + cell_id.size] = i
-        xy_idxs[off : off + cell_id.size] = cell_id
-        data[off : off + cell_id.size] = result.coverage.values[i]
-        off += cell_id.size
+    if lens.sum() == 0:
+        # No coverage - return empty sparse array
+        return sparse.COO(
+            (np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.int64)),
+            data=np.array([], dtype=dtype),
+            sorted=True,
+            fill_value=0,
+            shape=(len(geometries), *shape),
+        )
+
+    # Vectorized: repeat geometry indices, concatenate cell_ids and coverage values
+    geom_idxs = np.repeat(np.arange(len(geometries)), lens)
+    xy_idxs = np.concatenate([c for c in cell_id_arrays if len(c) > 0])
+    data = np.concatenate([c for c in coverage_arrays if len(c) > 0]).astype(dtype)
+
     return sparse.COO(
         (geom_idxs, *np.unravel_index(xy_idxs, shape=shape)),
         data=data,
@@ -316,3 +357,225 @@ def coverage(
         coords = coords.coords
     coverage = xr.DataArray(dims=("geometry", ydim, xdim), data=out, coords=coords, attrs=attrs, name=name)
     return coverage
+
+
+# ============================================================================
+# Engine functions for use with rasterize() in core.py
+# These provide the same interface as rasterio.py and rusterize.py engines
+# ============================================================================
+
+
+def rasterize_geometries(
+    geometries,
+    *,
+    dtype: np.dtype,
+    shape: tuple[int, int],
+    affine,
+    offset: int,
+    all_touched: bool = False,
+    merge_alg: str = "replace",
+    fill: Any = 0,
+    **kwargs,
+) -> np.ndarray:
+    """
+    Rasterize geometries using exactextract for precise coverage.
+
+    Uses exactextract to compute which pixels are covered by each geometry,
+    then reduces to geometry indices using the specified merge algorithm.
+
+    Parameters
+    ----------
+    geometries : Sequence[Geometry]
+        Shapely geometries to rasterize.
+    dtype : np.dtype
+        Output data type.
+    shape : tuple[int, int]
+        Output shape (nrows, ncols).
+    affine : Affine
+        Affine transform for the output grid.
+    offset : int
+        Starting value for geometry indices.
+    all_touched : bool
+        If True, all pixels touched by geometries will be burned in.
+        Note: exactextract does not support this parameter directly.
+    merge_alg : str
+        Merge algorithm: "replace" or "add".
+    fill : Any
+        Fill value for pixels not covered by any geometry.
+    **kwargs
+        Additional arguments (ignored for compatibility).
+
+    Returns
+    -------
+    np.ndarray
+        Rasterized array with shape (nrows, ncols).
+    """
+
+    if all_touched:
+        raise NotImplementedError(
+            "all_touched=True is not supported by the exactextract engine. "
+            "Use engine='rasterio' if you need all_touched support."
+        )
+
+    if len(geometries) == 0:
+        return np.full(shape, fill, dtype=dtype)
+
+    # Create GeoDataFrame (exactextract requires it)
+    # Use a dummy CRS - exactextract needs one but the algorithm doesn't depend on it
+    gdf = gpd.GeoDataFrame(geometry=list(geometries), crs="EPSG:4326")
+
+    # Use exactextract to get coverage (binary mode for efficiency)
+    raster = affine_to_raster_source(affine, shape, srs_wkt=gdf.crs.to_wkt())
+    result = exact_extract(
+        rast=raster,
+        vec=gdf,
+        ops=["cell_id", "coverage(coverage_weight=none)"],
+        output="pandas",
+    )
+
+    # Initialize output with fill value
+    out = np.full(shape, fill, dtype=dtype)
+
+    # Vectorized merging: concatenate all cell_ids and corresponding values
+    cell_id_arrays = result.cell_id.values
+    lens = np.array([len(c) for c in cell_id_arrays])
+    if lens.sum() == 0:
+        return out
+
+    all_cell_ids = np.concatenate([c for c in cell_id_arrays if len(c) > 0])
+    all_values = np.repeat(np.arange(len(geometries), dtype=dtype) + offset, lens)
+
+    # Process based on merge algorithm
+    if merge_alg == "replace":
+        # Later geometries overwrite earlier ones (last write wins)
+        np.put(out, all_cell_ids, all_values)
+    elif merge_alg == "add":
+        # Sum values where geometries overlap (unbuffered addition)
+        np.add.at(out.ravel(), all_cell_ids, all_values)
+    else:
+        raise ValueError(f"Unsupported merge_alg: {merge_alg}. Must be 'replace' or 'add'.")
+
+    return out
+
+
+def dask_rasterize_wrapper(
+    geom_array: np.ndarray,
+    x_offsets: np.ndarray,
+    y_offsets: np.ndarray,
+    x_sizes: np.ndarray,
+    y_sizes: np.ndarray,
+    offset_array: np.ndarray,
+    *,
+    fill: Any,
+    affine,
+    all_touched: bool,
+    merge_alg: str,
+    dtype_: np.dtype,
+    **kwargs,
+) -> np.ndarray:
+    """Dask wrapper for exactextract rasterization."""
+    offset = offset_array.item()
+
+    return rasterize_geometries(
+        geom_array[:, 0, 0].tolist(),
+        affine=affine * affine.translation(x_offsets.item(), y_offsets.item()),
+        shape=(y_sizes.item(), x_sizes.item()),
+        offset=offset,
+        all_touched=all_touched,
+        merge_alg=merge_alg,
+        fill=fill,
+        dtype=dtype_,
+    )[np.newaxis, :, :]
+
+
+def np_geometry_mask(
+    geometries,
+    *,
+    shape: tuple[int, int],
+    affine,
+    all_touched: bool = False,
+    invert: bool = False,
+    **kwargs,
+) -> np.ndarray:
+    """
+    Create a geometry mask using exactextract.
+
+    Parameters
+    ----------
+    geometries : Sequence[Geometry]
+        Shapely geometries for masking.
+    shape : tuple[int, int]
+        Output shape (nrows, ncols).
+    affine : Affine
+        Affine transform for the output grid.
+    all_touched : bool
+        If True, all pixels touched by geometries will be included.
+        Note: exactextract does not support this parameter directly.
+    invert : bool
+        If True, pixels inside geometries are True (unmasked).
+        If False (default), pixels inside geometries are False (masked).
+    **kwargs
+        Additional arguments (ignored for compatibility).
+
+    Returns
+    -------
+    np.ndarray
+        Boolean mask array with shape (nrows, ncols).
+    """
+    if all_touched:
+        raise NotImplementedError(
+            "all_touched=True is not supported by the exactextract engine. "
+            "Use engine='rasterio' if you need all_touched support."
+        )
+
+    if len(geometries) == 0:
+        # No geometries: all pixels are outside (masked=True) or inside (masked=False)
+        return np.full(shape, not invert, dtype=bool)
+
+    # Create GeoDataFrame (exactextract requires it)
+    gdf = gpd.GeoDataFrame(geometry=list(geometries), crs="EPSG:4326")
+
+    # Use exactextract to get coverage
+    raster = affine_to_raster_source(affine, shape, srs_wkt=gdf.crs.to_wkt())
+    result = exact_extract(
+        rast=raster,
+        vec=gdf,
+        ops=["cell_id", "coverage(coverage_weight=none)"],
+        output="pandas",
+    )
+
+    # Collect all covered cell IDs
+    all_cell_ids = set()
+    for i in range(len(geometries)):
+        cell_ids = result.cell_id.values[i]
+        all_cell_ids.update(cell_ids)
+
+    # Create mask: True = outside geometry (masked), False = inside
+    inside = np.zeros(shape, dtype=bool)
+    if all_cell_ids:
+        np.put(inside, list(all_cell_ids), True)
+
+    if invert:
+        return inside  # True = inside
+    else:
+        return ~inside  # True = outside (masked)
+
+
+def dask_mask_wrapper(
+    geom_array: np.ndarray,
+    x_offsets: np.ndarray,
+    y_offsets: np.ndarray,
+    x_sizes: np.ndarray,
+    y_sizes: np.ndarray,
+    *,
+    affine,
+    **kwargs,
+) -> np.ndarray:
+    """Dask wrapper for exactextract geometry masking."""
+    res = np_geometry_mask(
+        geom_array[:, 0, 0].tolist(),
+        shape=(y_sizes.item(), x_sizes.item()),
+        affine=affine * affine.translation(x_offsets.item(), y_offsets.item()),
+        **kwargs,
+    )
+    return res[np.newaxis, :, :]
