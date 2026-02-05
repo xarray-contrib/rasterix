@@ -340,6 +340,29 @@ class BoundingBox(Sequence[float]):
     def __hash__(self) -> int:
         return hash(self._box)
 
+    def isclose(self, other: "BoundingBox", rtol: float = 1e-12, atol: float = 0.0) -> bool:
+        """
+        Check if two bounding boxes are approximately equal.
+
+        Parameters
+        ----------
+        other : BoundingBox
+            The bounding box to compare against.
+        rtol : float, default 1e-12
+            Relative tolerance for comparison.
+        atol : float, default 0.0
+            Absolute tolerance for comparison.
+
+        Returns
+        -------
+        bool
+            True if all four bounds (left, bottom, right, top) are close
+            within the specified tolerances.
+        """
+        if not isinstance(other, BoundingBox):
+            return False
+        return all(math.isclose(a, b, rel_tol=rtol, abs_tol=atol) for a, b in zip(self._box, other._box))
+
     def __len__(self) -> int:
         return 4
 
