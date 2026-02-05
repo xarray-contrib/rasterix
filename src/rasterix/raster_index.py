@@ -895,7 +895,7 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
 
     def _new_with_bbox(self, bbox: BoundingBox) -> RasterIndex:
         affine = self.transform()
-        new_affine, Nx, Ny = bbox_to_affine(bbox, rx=affine.a, ry=affine.e)
+        new_affine, Nx, Ny = bbox_to_affine(bbox, affine)
         # TODO: set xdim, ydim explicitly
         new_index = self.from_transform(new_affine, width=Nx, height=Ny)
         assert new_index.bbox == bbox
@@ -984,18 +984,28 @@ def get_indexer(off, our_off, start, stop, spacing, tol, size) -> np.ndarray:
     return idxr
 
 
-def bbox_to_affine(bbox: BoundingBox, rx, ry) -> tuple[Affine, int, int]:
+def bbox_to_affine(bbox: BoundingBox, affine: Affine) -> tuple[Affine, int, int]:
     # Fraction of a pixel that can be ignored, defaults to 1/100. Bounding box of the output
     # geobox is allowed to be smaller than supplied bounding box by that amount.
     # FIXME: translate user-provided `tolerance` to `tol`
     tol: float = 0.01
 
-    offx, nx = snap_grid(bbox.left, bbox.right, rx, 0, tol=tol)
-    offy, ny = snap_grid(bbox.bottom, bbox.top, ry, 0, tol=tol)
+    rx = affine.a
+    ry = affine.e
 
-    affine = Affine.translation(offx, offy) * Affine.scale(rx, ry)
+    # Calculate the pixel fraction offset from the affine's grid alignment.
+    # This ensures the new grid aligns with the original grid rather than snapping
+    # to a global grid at x=0, y=0.
+    # See https://github.com/xarray-contrib/rasterix/issues/67
+    off_pix_x = (affine.c / abs(rx)) % 1.0
+    off_pix_y = (affine.f / abs(ry)) % 1.0
 
-    return affine, nx, ny
+    offx, nx = snap_grid(bbox.left, bbox.right, rx, off_pix_x, tol=tol)
+    offy, ny = snap_grid(bbox.bottom, bbox.top, ry, off_pix_y, tol=tol)
+
+    new_affine = Affine.translation(offx, offy) * Affine.scale(rx, ry)
+
+    return new_affine, nx, ny
 
 
 def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> tuple[BoundingBox, ...]:
