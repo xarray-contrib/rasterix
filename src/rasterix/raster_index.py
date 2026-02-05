@@ -228,9 +228,9 @@ class AxisAffineTransform(CoordinateTransform):
 
         # only compare the affine parameters of the relevant axis
         if self.is_xaxis:
-            affine_match = self.affine.a == other.affine.a and self.affine.c == other.affine.c
+            affine_match = _isclose(self.affine.a, other.affine.a) and _isclose(self.affine.c, other.affine.c)
         else:
-            affine_match = self.affine.e == other.affine.e and self.affine.f == other.affine.f
+            affine_match = _isclose(self.affine.e, other.affine.e) and _isclose(self.affine.f, other.affine.f)
 
         return affine_match and self.size == other.size
 
