@@ -596,6 +596,89 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         return cls(index, crs=crs)
 
     @classmethod
+    def from_geotransform(
+        cls,
+        geotransform: Sequence[float] | str,
+        *,
+        width: int,
+        height: int,
+        x_dim: str = "x",
+        y_dim: str = "y",
+        x_coord_name: str = "xc",
+        y_coord_name: str = "yc",
+        crs: CRS | Any | None = None,
+    ) -> RasterIndex:
+        """Create a RasterIndex from a GDAL-style GeoTransform.
+
+        Parameters
+        ----------
+        geotransform : sequence of float or str
+            GDAL GeoTransform as a 6-element sequence (c, a, b, f, d, e) or a
+            space-separated string of 6 numbers. The elements are:
+            - c: x-coordinate of the upper-left corner of the upper-left pixel
+            - a: pixel width (x-direction resolution)
+            - b: row rotation (typically 0)
+            - f: y-coordinate of the upper-left corner of the upper-left pixel
+            - d: column rotation (typically 0)
+            - e: pixel height (y-direction resolution, typically negative)
+        width : int
+            Number of pixels in the x direction.
+        height : int
+            Number of pixels in the y direction.
+        x_dim : str, optional
+            Name for the x dimension.
+        y_dim : str, optional
+            Name for the y dimension.
+        x_coord_name : str, optional
+            Name for the x coordinate. For non-rectilinear transforms only.
+        y_coord_name : str, optional
+            Name for the y coordinate. For non-rectilinear transforms only.
+        crs : :class:`pyproj.crs.CRS` or any, optional
+            The coordinate reference system. Any value accepted by
+            :meth:`pyproj.crs.CRS.from_user_input`.
+
+        Returns
+        -------
+        RasterIndex
+            A new RasterIndex object with appropriate internal structure.
+
+        See Also
+        --------
+        from_transform : Create from an Affine transform.
+        as_geotransform : Convert RasterIndex back to GeoTransform string.
+
+        References
+        ----------
+        - `GDAL GeoTransform tutorial <https://gdal.org/en/stable/tutorials/geotransforms_tut.html>`_
+
+        Examples
+        --------
+        Create from a sequence:
+
+        >>> geotransform = (323400.0, 30.0, 0.0, 4265400.0, 0.0, -30.0)
+        >>> index = RasterIndex.from_geotransform(geotransform, width=100, height=100)
+
+        Create from a string (as stored in netCDF attributes):
+
+        >>> geotransform = "323400.0 30.0 0.0 4265400.0 0.0 -30.0"
+        >>> index = RasterIndex.from_geotransform(geotransform, width=100, height=100)
+        """
+        if isinstance(geotransform, str):
+            geotransform = tuple(map(float, geotransform.split()))
+
+        affine = Affine.from_gdal(*geotransform)
+        return cls.from_transform(
+            affine,
+            width=width,
+            height=height,
+            x_dim=x_dim,
+            y_dim=y_dim,
+            x_coord_name=x_coord_name,
+            y_coord_name=y_coord_name,
+            crs=crs,
+        )
+
+    @classmethod
     def from_tiepoint_and_scale(
         cls,
         *,
