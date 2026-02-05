@@ -7,15 +7,16 @@ import xarray as xr
 from affine import Affine
 from xarray.testing import assert_identical
 
-from rasterix import RasterIndex, assign_index
+from rasterix import RasterIndex, assign_index, set_options
+from rasterix.raster_index import _assert_transforms_are_compatible
 from rasterix.utils import get_grid_mapping_var
 
 CRS_ATTRS = pyproj.CRS.from_epsg(4326).to_cf()
 
 
-def dataset_from_transform(transform: str) -> xr.Dataset:
+def dataset_from_transform(transform: str, width: int = 2, height: int = 4) -> xr.Dataset:
     return xr.Dataset(
-        {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
+        {"foo": (("y", "x"), np.ones((height, width)), {"grid_mapping": "spatial_ref"})},
         coords={"spatial_ref": ((), 0, CRS_ATTRS | {"GeoTransform": transform})},
     ).pipe(assign_index)
 
@@ -750,3 +751,33 @@ def test_sel_edge_cases(edge_case_ds, coord, sel_slice, expected_slice):
 
     # Verify slice is valid for array indexing
     edge_case_ds.sel({coord: sel_slice})
+
+
+def test_tolerance_in_concat():
+    """Test tolerance support in concatenation with real-world geotransforms."""
+    # User's geotransforms with tiny floating-point differences (~9e-13 relative)
+    # GeoTransform format: "c a b f d e" (origin_x, scale_x, skew_x, origin_y, skew_y, scale_y)
+    gt1 = "-8895604.157333 926.6254330549995 0.0 3335851.559 0.0 -926.6254330558334"
+    gt2 = "-7783653.637667 926.6254330558338 0.0 3335851.559 0.0 -926.6254330558334"
+
+    ds1 = dataset_from_transform(gt1, width=1200, height=10)
+    ds2 = dataset_from_transform(gt2, width=1200, height=10)
+
+    # Should succeed with default tolerance
+    result = xr.concat([ds1, ds2], dim="x")
+    assert result.sizes["x"] == 2400
+
+    # Should fail with zero tolerance
+    with set_options(transform_rtol=0, transform_atol=0):
+        with pytest.raises(ValueError, match="Transform parameters are not compatible"):
+            xr.concat([ds1, ds2], dim="x")
+
+    # Direct test of _assert_transforms_are_compatible with custom tolerance
+    a1 = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 100.0)
+    a2 = Affine(1.0 + 1e-10, 0.0, 0.0, 0.0, -1.0 - 1e-10, 100.0)
+
+    with pytest.raises(ValueError):
+        _assert_transforms_are_compatible(a1, a2)  # fails with default 1e-12
+
+    with set_options(transform_rtol=1e-9):
+        _assert_transforms_are_compatible(a1, a2)  # passes with 1e-9
