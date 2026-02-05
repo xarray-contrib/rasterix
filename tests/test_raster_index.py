@@ -567,6 +567,82 @@ def test_assign_index_with_stac_proj_transform_9_elements():
     assert actual_affine == expected_affine
 
 
+@pytest.mark.parametrize(
+    "convention_spec",
+    [
+        {"name": "spatial:"},  # optional
+        {"uuid": "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4"},  # mandatory
+    ],
+)
+def test_assign_index_with_spatial_zarr_convention(convention_spec: dict[str, str]):
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [convention_spec],
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    # Check that the index was created
+    assert isinstance(result.xindexes["x"], RasterIndex)
+    assert isinstance(result.xindexes["y"], RasterIndex)
+
+    # Verify the affine transform
+    expected_affine = Affine(30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+    # Verify spatial:transform attribute is removed
+    assert "spatial:transform" not in result.attrs
+
+
+def test_assign_index_with_spatial_zarr_convention_too_few_raises():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0],
+        },
+    )
+
+    with pytest.raises(ValueError, match="spatial:transform must have at least 6 elements"):
+        assign_index(da)
+
+
+def test_assign_index_with_spatial_zarr_convention_transform_type_not_implemented():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:transform_type": "not_affine",
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    with pytest.raises(NotImplementedError, match="Unsupported spatial:transform_type"):
+        assign_index(da)
+
+
+def test_assign_index_with_spatial_zarr_convention_registration_not_implemented():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:registration": "not_pixel",
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    with pytest.raises(NotImplementedError, match="Unsupported spatial:registration"):
+        assign_index(da)
+
+
 def test_assign_index_no_coords_no_metadata():
     """Test that assign_index raises error when coords are missing and no transform metadata."""
     da = xr.DataArray(np.ones((10, 10)), dims=("y", "x"))
@@ -707,6 +783,60 @@ def test_raster_index_from_stac_proj_metadata_with_crs():
     # Verify CRS was set
     assert index.crs is not None
     assert index.crs.to_epsg() == 32610
+
+
+@pytest.mark.parametrize(
+    "convention_spec",
+    [
+        {"name": "proj:"},  # optional
+        {"uuid": "f17cb550-5864-4468-aeb7-f3180cfb622f"},  # mandatory
+    ],
+)
+def test_assign_index_proj_zarr_convention_code(convention_spec: dict[str, str]):
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [convention_spec, {"name": "spatial:"}],
+            "proj:code": "EPSG:4326",
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 4326
+
+
+def test_assign_index_proj_zarr_convention_wkt2():
+    crs = pyproj.CRS.from_epsg(3857)
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "proj:wkt2": crs.to_wkt(),
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 3857
+
+
+def test_assign_index_proj_zarr_convention_projjson():
+    crs = pyproj.CRS.from_epsg(32610)
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "proj:projjson": crs.to_json_dict(),
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 32610
 
 
 @pytest.fixture
