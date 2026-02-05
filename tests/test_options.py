@@ -20,9 +20,11 @@ def test_set_options():
 
     # Validation
     with pytest.raises(ValueError, match="not in the set of valid options"):
-        set_options(invalid_option=1.0)
+        with set_options(invalid_option=1.0):
+            pass
     with pytest.raises(ValueError, match="non-negative"):
-        set_options(transform_rtol=-1e-6)
+        with set_options(transform_rtol=-1e-6):
+            pass
 
 
 def test_boundingbox_isclose():
