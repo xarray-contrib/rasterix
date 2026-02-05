@@ -20,13 +20,9 @@ import xarray as xr
 xr.set_options(display_expand_indexes=True);
 ```
 
-# Creating a RasterIndex
+# Creating
 
 There are several ways to create a {py:class}`RasterIndex`, depending on the source of your data and the metadata conventions it uses.
-
-## From existing Xarray objects: `assign_index`
-
-The most common way to create a RasterIndex is using {py:func}`assign_index`. This function automatically detects the affine transform from various metadata conventions:
 
 ```{code-cell}
 import numpy as np
@@ -34,14 +30,20 @@ import xarray as xr
 import rasterix
 ```
 
-### From GeoTIFF files (GDAL GeoTransform)
+## Using `assign_index`
 
-When loading data with rioxarray, the `GeoTransform` attribute is stored on the `spatial_ref` coordinate:
+The easiest way to create a RasterIndex is using {py:func}`assign_index`. This function automatically detects the affine transform from various metadata conventions, including:
+
+- [GDAL GeoTransform](https://gdal.org/en/stable/tutorials/geotransforms_tut.html) (from rioxarray/GeoTIFF files)
+- [GeoTIFF](https://docs.ogc.org/is/19-008r4/19-008r4.html) tiepoint and pixel scale attributes
+- [STAC projection extension](https://github.com/stac-extensions/projection) `proj:transform` metadata
+- [Zarr Spatial Convention](https://zarr-specs.readthedocs.io/en/latest/v3/conventions/spatial/v1.0.html) (`spatial:transform`)
+- 1D coordinate arrays (common in NetCDF files)
 
 ```{code-cell}
 import pyproj
 
-# Create a dataset with GDAL-style GeoTransform metadata
+# Example: dataset with GDAL-style GeoTransform metadata
 ds = xr.Dataset(
     {"temperature": (("y", "x"), np.random.rand(100, 100))},
     coords={
@@ -54,102 +56,18 @@ ds = xr.Dataset(
     attrs={"grid_mapping": "spatial_ref"},
 )
 
-# Assign a RasterIndex
+# assign_index auto-detects the convention and creates the RasterIndex
 ds = rasterix.assign_index(ds)
 ds
 ```
 
-### From 1D coordinate arrays
-
-If your data has 1D coordinate arrays (common with NetCDF files), `assign_index` can infer the transform:
-
-```{code-cell}
-# Create dataset with 1D coordinates
-ds_coords = xr.Dataset(
-    {"temperature": (("y", "x"), np.random.rand(100, 100))},
-    coords={
-        "x": np.arange(400000, 401000, 10) + 5,  # pixel centers
-        "y": np.arange(5000000, 4999000, -10) - 5,
-    },
-)
-
-ds_coords = rasterix.assign_index(ds_coords)
-ds_coords
-```
-
-### From GeoTIFF tiepoint/scale metadata
-
-Some GeoTIFF files use `model_tiepoint` and `model_pixel_scale` attributes instead of GeoTransform:
-
-```{code-cell}
-ds_tiepoint = xr.Dataset(
-    {"elevation": (("y", "x"), np.random.rand(100, 100))},
-    attrs={
-        "model_tiepoint": [0.0, 0.0, 0.0, 323400.0, 4265400.0, 0.0],
-        "model_pixel_scale": [30.0, 30.0, 0.0],
-    },
-)
-
-ds_tiepoint = rasterix.assign_index(ds_tiepoint)
-ds_tiepoint
-```
-
-### From STAC proj:transform
-
-Data loaded from STAC catalogs often includes `proj:transform` metadata:
-
-```{code-cell}
-ds_stac = xr.Dataset(
-    {"reflectance": (("y", "x"), np.random.rand(100, 100))},
-    attrs={
-        "proj:transform": [30.0, 0.0, 323400.0, 0.0, -30.0, 4268400.0],
-    },
-)
-
-ds_stac = rasterix.assign_index(ds_stac)
-ds_stac
-```
-
-### From Zarr Spatial Convention
-
-The [Zarr Spatial Convention](https://zarr-specs.readthedocs.io/en/latest/v3/conventions/spatial/v1.0.html) uses `spatial:transform` along with a `zarr_conventions` attribute to indicate that the data follows this convention:
-
-```{code-cell}
-ds_zarr_spatial = xr.Dataset(
-    {"temperature": (("y", "x"), np.random.rand(100, 100))},
-    attrs={
-        "zarr_conventions": [{"name": "spatial:"}],
-        "spatial:transform": [30.0, 0.0, 323400.0, 0.0, -30.0, 4268400.0],
-    },
-)
-
-ds_zarr_spatial = rasterix.assign_index(ds_zarr_spatial)
-ds_zarr_spatial
-```
-
-The Zarr Spatial Convention can also be combined with the [Zarr Proj Convention](https://zarr-specs.readthedocs.io/en/latest/v3/conventions/proj/v1.0.html) for CRS information using `proj:code`, `proj:wkt2`, or `proj:projjson`:
-
-```{code-cell}
-ds_zarr_proj = xr.Dataset(
-    {"temperature": (("y", "x"), np.random.rand(100, 100))},
-    attrs={
-        "zarr_conventions": [{"name": "spatial:"}, {"name": "proj:"}],
-        "spatial:transform": [30.0, 0.0, 323400.0, 0.0, -30.0, 4268400.0],
-        "proj:code": "EPSG:32610",
-    },
-)
-
-ds_zarr_proj = rasterix.assign_index(ds_zarr_proj)
-ds_zarr_proj.xindexes["x"].crs
-```
-
 ## Direct construction with class methods
 
-For more control, you can create a {py:class}`RasterIndex` directly using class methods and then assign it to your data.
+For more control, you can create a {py:class}`RasterIndex` directly using class methods. This is useful when you have the transform parameters available directly, or when working with data that doesn't have embedded metadata.
 
-### `RasterIndex.from_transform`
+### From an Affine transform
 
-Create from an affine transform directly:
+Use {py:meth}`RasterIndex.from_transform` to create from an [Affine](https://github.com/rasterio/affine) transform directly (corresponds to [GDAL GeoTransform](https://gdal.org/en/stable/tutorials/geotransforms_tut.html) convention):
 
 ```{code-cell}
 from affine import Affine
@@ -173,9 +91,37 @@ ds_manual = xr.Dataset(
 ds_manual
 ```
 
-### `RasterIndex.from_tiepoint_and_scale`
+### From a GeoTransform
 
-Create from GeoTIFF-style tiepoint and pixel scale:
+Use {py:meth}`RasterIndex.from_geotransform` to create from a [GDAL GeoTransform](https://gdal.org/en/stable/tutorials/geotransforms_tut.html), either as a sequence or a space-separated string:
+
+```{code-cell}
+# From a tuple
+geotransform = (400000.0, 10.0, 0.0, 5000000.0, 0.0, -10.0)
+index = rasterix.RasterIndex.from_geotransform(
+    geotransform,
+    width=100,
+    height=100,
+    crs="EPSG:32610",
+)
+index
+```
+
+```{code-cell}
+# From a string (as commonly stored in netCDF attributes)
+geotransform = "400000.0 10.0 0.0 5000000.0 0.0 -10.0"
+index = rasterix.RasterIndex.from_geotransform(
+    geotransform,
+    width=100,
+    height=100,
+    crs="EPSG:32610",
+)
+index
+```
+
+### From GeoTIFF tiepoint and scale
+
+Use {py:meth}`RasterIndex.from_tiepoint_and_scale` to create from [GeoTIFF](https://docs.ogc.org/is/19-008r4/19-008r4.html)-style tiepoint and pixel scale attributes:
 
 ```{code-cell}
 index = rasterix.RasterIndex.from_tiepoint_and_scale(
@@ -188,9 +134,9 @@ index = rasterix.RasterIndex.from_tiepoint_and_scale(
 index
 ```
 
-### `RasterIndex.from_stac_proj_metadata`
+### From STAC projection metadata
 
-Create from STAC projection metadata:
+Use {py:meth}`RasterIndex.from_stac_proj_metadata` to create from [STAC projection extension](https://github.com/stac-extensions/projection) metadata:
 
 ```{code-cell}
 metadata = {"proj:transform": [30.0, 0.0, 323400.0, 0.0, -30.0, 4268400.0]}
@@ -205,7 +151,7 @@ index
 
 ## Accessing transform information
 
-Once created, you can access the affine transform:
+Once created, you can access the affine transform using methods on {py:class}`RasterIndex`:
 
 ```{code-cell}
 ds = rasterix.assign_index(
@@ -217,21 +163,21 @@ ds = rasterix.assign_index(
     )
 )
 
-# Top-left corner transform (GDAL convention)
+# Top-left corner transform (GDAL convention) via transform()
 ds.xindexes["x"].transform()
 ```
 
 ```{code-cell}
-# Pixel center transform
+# Pixel center transform via center_transform()
 ds.xindexes["x"].center_transform()
 ```
 
 ```{code-cell}
-# Bounding box
+# Bounding box via the bbox property
 ds.xindexes["x"].bbox
 ```
 
 ```{code-cell}
-# As GeoTransform string (for saving)
+# As GeoTransform string (for saving) via as_geotransform()
 ds.xindexes["x"].as_geotransform()
 ```
