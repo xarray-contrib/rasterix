@@ -409,6 +409,39 @@ def test_align():
         aligned = xr.align(*datasets, join="exact")
 
 
+def test_join_partially_overlapping_indexes():
+    """Test joining two partially overlapping indexes with non-grid-aligned coordinates.
+
+    Regression test for https://github.com/xarray-contrib/rasterix/issues/67
+
+    This tests the case where the transform coordinates are not aligned to a global
+    grid at x=0, y=0 (e.g., 399955.0 / 10.0 = 39995.5, which has a 0.5 pixel offset).
+    """
+    transform1 = Affine.from_gdal(399955.0, 10.0, 0.0, 5500025.0, 0.0, -10.0)
+    transform2 = Affine.from_gdal(399955.0, 10.0, 0.0, 5497625.0, 0.0, -10.0)
+
+    index1 = RasterIndex.from_transform(transform1, width=256, height=256)
+    index2 = RasterIndex.from_transform(transform2, width=256, height=256)
+
+    # Inner join should produce a 256x16 pixel index (the overlap region)
+    result = index1.join(index2, how="inner")
+
+    assert result.xy_shape == (256, 16)
+    assert result.bbox.left == 399955.0
+    assert result.bbox.right == 402515.0
+    assert result.bbox.bottom == 5497465.0
+    assert result.bbox.top == 5497625.0
+
+    # Outer join should produce a 256x496 pixel index (combined coverage)
+    result_outer = index1.join(index2, how="outer")
+
+    assert result_outer.xy_shape == (256, 496)  # 256 + 256 - 16 = 496
+    assert result_outer.bbox.left == 399955.0
+    assert result_outer.bbox.right == 402515.0
+    assert result_outer.bbox.bottom == 5495065.0
+    assert result_outer.bbox.top == 5500025.0
+
+
 def test_repr_inline() -> None:
     index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     ds1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
