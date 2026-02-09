@@ -8,13 +8,24 @@ import geopandas as gpd
 import numpy as np
 import xarray as xr
 
+from ..raster_index import RasterIndex
 from ..utils import get_affine
 from .utils import XAXIS, YAXIS, clip_to_bbox, is_in_memory, prepare_for_dask
 
 if TYPE_CHECKING:
     import dask_geopandas
+    from affine import Affine
 
 __all__ = ["rasterize", "geometry_mask", "geometry_clip"]
+
+
+def _get_affine(obj: xr.Dataset | xr.DataArray, *, x_dim: str, y_dim: str) -> Affine:
+    """Get affine transform, preferring RasterIndex if available."""
+    idx = obj.xindexes.get(x_dim)
+    if isinstance(idx, RasterIndex):
+        return idx.transform()
+    return get_affine(obj, x_dim=x_dim, y_dim=y_dim)
+
 
 Engine = Literal["rasterio", "rusterize", "exactextract"]
 
@@ -222,7 +233,7 @@ def rasterize(
     if clip:
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
-    affine = get_affine(obj, x_dim=xdim, y_dim=ydim)
+    affine = _get_affine(obj, x_dim=xdim, y_dim=ydim)
     engine_merge_alg = _normalize_merge_alg(merge_alg, resolved_engine)
 
     rasterize_geometries, dask_rasterize_wrapper = _get_rasterize_funcs(resolved_engine)
@@ -367,7 +378,7 @@ def geometry_mask(
     if clip:
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
-    affine = get_affine(obj, x_dim=xdim, y_dim=ydim)
+    affine = _get_affine(obj, x_dim=xdim, y_dim=ydim)
 
     np_geometry_mask, dask_mask_wrapper = _get_mask_funcs(resolved_engine)
 

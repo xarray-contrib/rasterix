@@ -6,6 +6,7 @@ import xarray as xr
 import xproj  # noqa
 from xarray.tests import raise_if_dask_computes
 
+from rasterix import RasterIndex, assign_index
 from rasterix.rasterize import geometry_clip, geometry_mask, rasterize
 
 pytestmark = pytest.mark.filterwarnings("ignore:variable '.*' has non-conforming '_FillValue'")
@@ -121,3 +122,35 @@ def test_geometry_clip(engine, dataset):
     assert clipped is not None
     # Basic check that clipping worked - masked values outside geometries
     assert clipped["u"].isnull().any()
+
+
+@pytest.fixture
+def raster_index_dataset(dataset):
+    """Same grid as ``dataset`` but with a RasterIndex on the spatial dims."""
+    ds = assign_index(dataset, x_dim="longitude", y_dim="latitude")
+    assert isinstance(ds.xindexes["longitude"], RasterIndex)
+    return ds
+
+
+def test_rasterize_with_raster_index(engine, raster_index_dataset, dataset):
+    world = gpd.read_file(geodatasets.get_path("naturalearth land"))
+    kwargs = dict(xdim="longitude", ydim="latitude", engine=engine)
+
+    expected = rasterize(dataset, world[["geometry"]], **kwargs)
+    result = rasterize(raster_index_dataset, world[["geometry"]], **kwargs)
+
+    xr.testing.assert_equal(result, expected)
+    assert isinstance(result.xindexes["longitude"], RasterIndex)
+    assert isinstance(result.xindexes["latitude"], RasterIndex)
+
+
+def test_geometry_mask_with_raster_index(engine, raster_index_dataset, dataset):
+    world = gpd.read_file(geodatasets.get_path("naturalearth land"))
+    kwargs = dict(xdim="longitude", ydim="latitude", engine=engine)
+
+    expected = geometry_mask(dataset, world[["geometry"]], **kwargs)
+    result = geometry_mask(raster_index_dataset, world[["geometry"]], **kwargs)
+
+    xr.testing.assert_equal(result, expected)
+    assert isinstance(result.xindexes["longitude"], RasterIndex)
+    assert isinstance(result.xindexes["latitude"], RasterIndex)
