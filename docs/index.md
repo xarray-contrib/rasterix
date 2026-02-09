@@ -29,6 +29,14 @@ rasterize/exactextract
 
 ```{toctree}
 ---
+caption: Examples
+hidden:
+---
+examples/line-zonal-stats
+```
+
+```{toctree}
+---
 caption: Reference
 hidden:
 ---
