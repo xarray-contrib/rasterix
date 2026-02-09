@@ -60,15 +60,22 @@ def dask_rasterize_wrapper(
     all_touched: bool,
     merge_alg: MergeAlg,
     dtype_: np.dtype,
+    values: np.ndarray | None = None,
     env: rio.Env | None = None,
 ) -> np.ndarray:
     offset = offset_array.item()
+
+    if values is not None:
+        chunk_values = values[:, 0, 0].tolist()
+    else:
+        chunk_values = None
 
     return rasterize_geometries(
         geom_array[:, 0, 0].tolist(),
         affine=affine * affine.translation(x_offsets.item(), y_offsets.item()),
         shape=(y_sizes.item(), x_sizes.item()),
         offset=offset,
+        values=chunk_values,
         all_touched=all_touched,
         merge_alg=merge_alg,
         fill=fill,
@@ -85,14 +92,20 @@ def rasterize_geometries(
     shape: tuple[int, int],
     affine: Affine,
     offset: int,
+    values: Sequence[Any] | None = None,
     env: rio.Env | None = None,
     clear_cache: bool = False,
     **kwargs,
 ):
     from rasterio.features import rasterize as rasterize_rio
 
+    if values is not None:
+        shapes = zip(geometries, values, strict=True)
+    else:
+        shapes = zip(geometries, range(offset, offset + len(geometries)), strict=True)
+
     res = rasterize_rio(
-        zip(geometries, range(offset, offset + len(geometries)), strict=True),
+        shapes,
         out_shape=shape,
         transform=affine,
         **kwargs,

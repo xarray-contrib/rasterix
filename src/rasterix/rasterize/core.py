@@ -27,12 +27,16 @@ def _get_engine(engine: Engine | None) -> Engine:
             try:
                 import rusterize as _  # noqa: F401
             except ImportError as e:
-                raise ImportError("rusterize is not installed. Install it with: pip install rusterize") from e
+                raise ImportError(
+                    "rusterize is not installed. Install it with: pip install rusterize"
+                ) from e
         elif engine == "rasterio":
             try:
                 import rasterio as _  # noqa: F401
             except ImportError as e:
-                raise ImportError("rasterio is not installed. Install it with: pip install rasterio") from e
+                raise ImportError(
+                    "rasterio is not installed. Install it with: pip install rasterio"
+                ) from e
         elif engine == "exactextract":
             try:
                 import exactextract as _  # noqa: F401
@@ -138,6 +142,7 @@ def rasterize(
     obj: xr.Dataset | xr.DataArray,
     geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
     *,
+    field: str | None = None,
     engine: Engine | None = None,
     xdim: str = "x",
     ydim: str = "y",
@@ -158,6 +163,10 @@ def rasterize(
         Xarray object whose grid to rasterize onto.
     geometries : GeoDataFrame
         Either a geopandas or dask_geopandas GeoDataFrame.
+    field : str or None
+        Name of a column in ``geometries`` whose values will be burned into the
+        raster. When ``None`` (default), sequential integer indices are used.
+        The column must contain numeric values.
     engine : {"rasterio", "rusterize", "exactextract"} or None
         Rasterization engine to use. If None, auto-detects based on installed
         packages (prefers rusterize if available, falls back to rasterio).
@@ -215,7 +224,9 @@ def rasterize(
     exactextract.exact_extract
     """
     if xdim not in obj.dims or ydim not in obj.dims:
-        raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
+        raise ValueError(
+            f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}"
+        )
 
     resolved_engine = _get_engine(engine)
 
@@ -234,53 +245,95 @@ def rasterize(
         **engine_kwargs,
     )
 
-    if is_in_memory(obj=obj, geometries=geometries):
-        geom_array = geometries.to_numpy().squeeze(axis=1)
-        rasterized = rasterize_geometries(
-            geom_array.tolist(),
-            shape=(obj.sizes[ydim], obj.sizes[xdim]),
-            offset=0,
-            dtype=np.min_scalar_type(len(geometries)),
-            fill=len(geometries),
-            **rasterize_kwargs,
+    if field is not None and field not in geometries.columns:
+        raise ValueError(
+            f"Column {field!r} not found in geometries. Available columns: {list(geometries.columns)}"
         )
+
+    if is_in_memory(obj=obj, geometries=geometries):
+        geom_array = geometries.geometry.to_numpy()
+        if field is not None:
+            field_values = geometries[field].to_numpy()
+            dtype = np.result_type(field_values)
+            rasterized = rasterize_geometries(
+                geom_array.tolist(),
+                shape=(obj.sizes[ydim], obj.sizes[xdim]),
+                offset=0,
+                dtype=dtype,
+                fill=dtype.type(0),
+                values=field_values.tolist(),
+                **rasterize_kwargs,
+            )
+        else:
+            rasterized = rasterize_geometries(
+                geom_array.tolist(),
+                shape=(obj.sizes[ydim], obj.sizes[xdim]),
+                offset=0,
+                dtype=np.min_scalar_type(len(geometries)),
+                fill=len(geometries),
+                **rasterize_kwargs,
+            )
     else:
         from dask.array import from_array, map_blocks
 
-        map_blocks_args, chunks, geom_array = prepare_for_dask(
+        map_blocks_args, chunks, geom_array, field_array = prepare_for_dask(
             obj,
             geometries,
             xdim=xdim,
             ydim=ydim,
             geoms_rechunk_size=geoms_rechunk_size,
+            field=field,
         )
-        # DaskGeoDataFrame.len() computes!
-        num_geoms = geom_array.size
-        # with dask, we use 0 as a fill value and replace it later
-        dtype = np.min_scalar_type(num_geoms)
-        # add 1 to the offset, to account for 0 as fill value
-        npoffsets = np.cumsum(np.array([0, *geom_array.chunks[0][:-1]])) + 1
-        offsets = from_array(npoffsets, chunks=1)
 
-        rasterized = map_blocks(
-            dask_rasterize_wrapper,
-            *map_blocks_args,
-            offsets[:, np.newaxis, np.newaxis],
-            chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
-            meta=np.array([], dtype=dtype),
-            fill=0,  # good identity value for both sum & replace.
-            **rasterize_kwargs,
-            dtype_=dtype,
-        )
+        if field_array is not None:
+            dtype = field_array.dtype
+
+            rasterized = map_blocks(
+                dask_rasterize_wrapper,
+                *map_blocks_args,
+                # offset is unused when values are provided, but still required positionally
+                from_array(np.zeros(geom_array.numblocks[0], dtype=int), chunks=1)[
+                    :, np.newaxis, np.newaxis
+                ],
+                chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
+                meta=np.array([], dtype=dtype),
+                fill=dtype.type(0),
+                values=field_array[:, np.newaxis, np.newaxis],
+                **rasterize_kwargs,
+                dtype_=dtype,
+            )
+        else:
+            # DaskGeoDataFrame.len() computes!
+            num_geoms = geom_array.size
+            # with dask, we use 0 as a fill value and replace it later
+            dtype = np.min_scalar_type(num_geoms)
+            # add 1 to the offset, to account for 0 as fill value
+            npoffsets = np.cumsum(np.array([0, *geom_array.chunks[0][:-1]])) + 1
+            offsets = from_array(npoffsets, chunks=1)
+
+            rasterized = map_blocks(
+                dask_rasterize_wrapper,
+                *map_blocks_args,
+                offsets[:, np.newaxis, np.newaxis],
+                chunks=((1,) * geom_array.numblocks[0], chunks[YAXIS], chunks[XAXIS]),
+                meta=np.array([], dtype=dtype),
+                fill=0,  # good identity value for both sum & replace.
+                **rasterize_kwargs,
+                dtype_=dtype,
+            )
+
         if merge_alg == "replace":
             rasterized = rasterized.max(axis=0)
         elif merge_alg == "add":
             rasterized = rasterized.sum(axis=0)
         else:
-            raise ValueError(f"Invalid merge_alg {merge_alg!r}. Must be one of: ['replace', 'add']")
+            raise ValueError(
+                f"Invalid merge_alg {merge_alg!r}. Must be one of: ['replace', 'add']"
+            )
 
-        # and reduce every other value by 1
-        rasterized = rasterized.map_blocks(partial(replace_values, to=num_geoms))
+        if field is None:
+            # and reduce every other value by 1
+            rasterized = rasterized.map_blocks(partial(replace_values, to=num_geoms))
 
     return xr.DataArray(
         dims=(ydim, xdim),
@@ -360,7 +413,9 @@ def geometry_mask(
     rasterio.features.geometry_mask
     """
     if xdim not in obj.dims or ydim not in obj.dims:
-        raise ValueError(f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}")
+        raise ValueError(
+            f"Received {xdim=!r}, {ydim=!r} but obj.dims={tuple(obj.dims)}"
+        )
 
     resolved_engine = _get_engine(engine)
 
@@ -388,7 +443,7 @@ def geometry_mask(
     else:
         from dask.array import map_blocks
 
-        map_blocks_args, chunks, geom_array = prepare_for_dask(
+        map_blocks_args, chunks, geom_array, _ = prepare_for_dask(
             obj,
             geometries,
             xdim=xdim,

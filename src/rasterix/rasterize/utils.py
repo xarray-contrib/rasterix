@@ -21,15 +21,23 @@ def clip_to_bbox(obj: xr.Dataset, geometries: gpd.GeoDataFrame) -> xr.Dataset: .
 @overload
 def clip_to_bbox(obj: xr.DataArray, geometries: gpd.GeoDataFrame) -> xr.DataArray: ...
 def clip_to_bbox(
-    obj: xr.Dataset | xr.DataArray, geometries: gpd.GeoDataFrame, *, xdim: str, ydim: str
+    obj: xr.Dataset | xr.DataArray,
+    geometries: gpd.GeoDataFrame,
+    *,
+    xdim: str,
+    ydim: str,
 ) -> xr.Dataset | xr.DataArray:
     bbox = geometries.total_bounds
     if not hasattr(bbox, "chunks"):
         y = obj[ydim].data
         if y[0] < y[-1]:
-            obj = obj.sel({xdim: slice(bbox[0], bbox[2]), ydim: slice(bbox[1], bbox[3])})
+            obj = obj.sel(
+                {xdim: slice(bbox[0], bbox[2]), ydim: slice(bbox[1], bbox[3])}
+            )
         else:
-            obj = obj.sel({xdim: slice(bbox[0], bbox[2]), ydim: slice(bbox[3], bbox[1])})
+            obj = obj.sel(
+                {xdim: slice(bbox[0], bbox[2]), ydim: slice(bbox[3], bbox[1])}
+            )
     return obj
 
 
@@ -60,6 +68,20 @@ def geometries_as_dask_array(
         return geometries.to_dask_array(lengths=chunks).squeeze(axis=1)
 
 
+def _field_as_dask_array(
+    geometries: gpd.GeoDataFrame | dask_geopandas.GeoDataFrame,
+    field: str,
+    chunks: tuple[int, ...],
+) -> dask.array.Array:
+    """Extract a GeoDataFrame column as a dask array with the given chunks."""
+    from dask.array import from_array
+
+    if isinstance(geometries, gpd.GeoDataFrame):
+        return from_array(geometries[field].to_numpy(), chunks=chunks)
+    else:
+        return geometries[field].to_dask_array(lengths=chunks)
+
+
 def prepare_for_dask(
     obj: xr.Dataset | xr.DataArray,
     geometries,
@@ -67,6 +89,7 @@ def prepare_for_dask(
     xdim: str,
     ydim: str,
     geoms_rechunk_size: int | None,
+    field: str | None = None,
 ):
     from dask.array import from_array
 
@@ -78,10 +101,20 @@ def prepare_for_dask(
     if geoms_rechunk_size is not None:
         geom_array = geom_array.rechunk({0: geoms_rechunk_size})
 
+    field_array = None
+    if field is not None:
+        field_array = _field_as_dask_array(geometries, field, geom_array.chunks[0])
+        if geoms_rechunk_size is not None:
+            field_array = field_array.rechunk({0: geoms_rechunk_size})
+
     x_sizes = from_array(chunks[XAXIS], chunks=1)
     y_sizes = from_array(chunks[YAXIS], chunks=1)
-    y_offsets = from_array(np.cumulative_sum(chunks[YAXIS][:-1], include_initial=True), chunks=1)
-    x_offsets = from_array(np.cumulative_sum(chunks[XAXIS][:-1], include_initial=True), chunks=1)
+    y_offsets = from_array(
+        np.cumulative_sum(chunks[YAXIS][:-1], include_initial=True), chunks=1
+    )
+    x_offsets = from_array(
+        np.cumulative_sum(chunks[XAXIS][:-1], include_initial=True), chunks=1
+    )
 
     map_blocks_args = (
         geom_array[:, np.newaxis, np.newaxis],
@@ -90,4 +123,4 @@ def prepare_for_dask(
         x_sizes[np.newaxis, np.newaxis, :],
         y_sizes[np.newaxis, :, np.newaxis],
     )
-    return map_blocks_args, chunks, geom_array
+    return map_blocks_args, chunks, geom_array, field_array
