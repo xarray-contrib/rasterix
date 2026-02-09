@@ -45,6 +45,7 @@ def test_rasterize(clip, engine, dataset):
     kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, engine=engine)
     rasterized = rasterize(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
+    assert rasterized.dtype == "uint8"
 
     chunked = dataset.chunk(latitude=119, longitude=-1)
     with raise_if_dask_computes():
@@ -55,6 +56,7 @@ def test_rasterize(clip, engine, dataset):
         expected_chunks = (chunked.chunksizes["latitude"], chunked.chunksizes["longitude"])
         assert drasterized.chunks == expected_chunks
     xr.testing.assert_identical(rasterized, drasterized)
+    assert drasterized.dtype == "uint8"
 
     if not clip:
         # clipping not supported with dask geometries

@@ -95,6 +95,7 @@ def rasterize_geometries(
         zip(geometries, range(offset, offset + len(geometries)), strict=True),
         out_shape=shape,
         transform=affine,
+        dtype=dtype,
         **kwargs,
     )
     assert res.shape == shape

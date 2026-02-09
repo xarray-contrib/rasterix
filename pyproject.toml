@@ -172,6 +172,9 @@ run-pytest = "run-coverage --no-cov"
 run-verbose = "run-coverage --verbose"
 list-env = "pip list"
 
+[tool.uv]
+constraint-dependencies = ["numpy<2.4"]
+
 [tool.ruff.lint]
 # E402: module level import not at top of file
 # E501: line too long - let black worry about that
