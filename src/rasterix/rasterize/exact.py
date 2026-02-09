@@ -10,6 +10,7 @@ import xarray as xr
 from exactextract import exact_extract
 from exactextract.raster import NumPyRasterSource
 
+from ..rasterize.core import _get_affine
 from .utils import clip_to_bbox, geometries_as_dask_array, is_in_memory
 
 if TYPE_CHECKING:
@@ -102,9 +103,9 @@ def get_dtype(coverage_weight: CoverageWeights, geometries):
 
 
 def np_coverage(
-    x: np.ndarray,
-    y: np.ndarray,
+    affine,
     *,
+    shape: tuple[int, int],
     geometries: gpd.GeoDataFrame,
     strategy: Strategy = DEFAULT_STRATEGY,
     coverage_weight: CoverageWeights = "fraction",
@@ -114,8 +115,7 @@ def np_coverage(
     if len(geometries.columns) > 1:
         raise ValueError("Require a single geometries column or a GeoSeries.")
 
-    shape = (y.size, x.size)
-    raster = xy_to_raster_source(x, y, srs_wkt=geometries.crs.to_wkt())
+    raster = affine_to_raster_source(affine, shape, srs_wkt=geometries.crs.to_wkt())
     result = exact_extract(
         rast=raster,
         vec=geometries,
@@ -160,43 +160,59 @@ def np_coverage(
 
 def coverage_np_dask_wrapper(
     geom_array: np.ndarray,
-    x: np.ndarray,
-    y: np.ndarray,
+    x_offsets: np.ndarray,
+    y_offsets: np.ndarray,
+    x_sizes: np.ndarray,
+    y_sizes: np.ndarray,
+    affine,
     coverage_weight: CoverageWeights,
     strategy: Strategy,
     crs,
 ) -> np.ndarray:
+    shape = (y_sizes.item(), x_sizes.item())
+    chunk_affine = affine * affine.translation(x_offsets.item(), y_offsets.item())
     return np_coverage(
-        x=x.squeeze(axis=(GEOM_AXIS, Y_AXIS)),
-        y=y.squeeze(axis=(GEOM_AXIS, X_AXIS)),
+        chunk_affine,
+        shape=shape,
         geometries=gpd.GeoDataFrame(geometry=geom_array.squeeze(axis=(X_AXIS, Y_AXIS)), crs=crs),
         coverage_weight=coverage_weight,
     )
 
 
 def dask_coverage(
-    x: dask.array.Array,
-    y: dask.array.Array,
+    affine,
     *,
+    chunks: tuple[tuple[int, ...], tuple[int, ...]],
     geom_array: dask.array.Array,
     coverage_weight: CoverageWeights = "fraction",
     strategy: Strategy = DEFAULT_STRATEGY,
     crs: Any,
 ) -> dask.array.Array:
     import dask.array
+    from dask.array import from_array
 
-    if any(c == 1 for c in x.chunks[0]) or any(c == 1 for c in y.chunks[0]):
+    y_chunks, x_chunks = chunks
+
+    if any(c == 1 for c in x_chunks) or any(c == 1 for c in y_chunks):
         raise ValueError("exactextract does not support a chunksize of 1. Please rechunk to avoid this")
+
+    x_sizes = from_array(x_chunks, chunks=1)
+    y_sizes = from_array(y_chunks, chunks=1)
+    x_offsets = from_array(np.cumulative_sum(x_chunks[:-1], include_initial=True), chunks=1)
+    y_offsets = from_array(np.cumulative_sum(y_chunks[:-1], include_initial=True), chunks=1)
 
     out = dask.array.map_blocks(
         coverage_np_dask_wrapper,
         geom_array[:, np.newaxis, np.newaxis],
-        x[np.newaxis, np.newaxis, :],
-        y[np.newaxis, :, np.newaxis],
+        x_offsets[np.newaxis, np.newaxis, :],
+        y_offsets[np.newaxis, :, np.newaxis],
+        x_sizes[np.newaxis, np.newaxis, :],
+        y_sizes[np.newaxis, :, np.newaxis],
+        affine=affine,
         crs=crs,
         coverage_weight=coverage_weight,
         strategy=strategy,
-        chunks=(*geom_array.chunks, *y.chunks, *x.chunks),
+        chunks=(*geom_array.chunks, tuple(y_chunks), tuple(x_chunks)),
         meta=sparse.COO(
             [], data=np.array([], dtype=get_dtype(coverage_weight, geom_array)), shape=(0, 0, 0), fill_value=0
         ),
@@ -292,32 +308,30 @@ def coverage(
 
     if clip:
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
+
+    affine = _get_affine(obj, x_dim=xdim, y_dim=ydim)
+    shape = (obj.sizes[ydim], obj.sizes[xdim])
+
     if is_in_memory(obj=obj, geometries=geometries):
         out = np_coverage(
-            x=obj[xdim].data,
-            y=obj[ydim].data,
+            affine,
+            shape=shape,
             geometries=geometries,
             coverage_weight=coverage_weight,
             strategy=strategy,
         )
         geom_array = geometries.to_numpy().squeeze(axis=1)
     else:
-        from dask.array import Array, from_array
-
         geom_dask_array = geometries_as_dask_array(geometries)
-        if not isinstance(obj[xdim].data, Array):
-            dask_x = from_array(obj[xdim].data, chunks=obj.chunksizes.get(xdim, -1))
-        else:
-            dask_x = obj[xdim].data
 
-        if not isinstance(obj[ydim].data, Array):
-            dask_y = from_array(obj[ydim].data, chunks=obj.chunksizes.get(ydim, -1))
-        else:
-            dask_y = obj[ydim].data
+        chunks = (
+            obj.chunksizes.get(ydim, (obj.sizes[ydim],)),
+            obj.chunksizes.get(xdim, (obj.sizes[xdim],)),
+        )
 
         out = dask_coverage(
-            x=dask_x,
-            y=dask_y,
+            affine,
+            chunks=chunks,
             geom_array=geom_dask_array,
             crs=geometries.crs,
             coverage_weight=coverage_weight,
