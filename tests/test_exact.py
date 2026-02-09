@@ -122,8 +122,8 @@ def test_coverage_weights(
         ds = ds.chunk({"x": xchunks, "y": ychunks})
     if not indexed:
         # Ensure coordinate arrays are in memory so get_affine doesn't trigger dask compute
-        ds["x"] = ds["x"].load()
-        ds["y"] = ds["y"].load()
+        ds.coords["x"].load()
+        ds.coords["y"].load()
 
     with raise_if_dask_computes():
         actual = coverage(ds, geometries[["geometry"]], coverage_weight=coverage_weight)
