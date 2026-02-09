@@ -10,6 +10,7 @@ import xarray as xr
 from exactextract import exact_extract
 from exactextract.raster import NumPyRasterSource
 
+from ..utils import get_grid_mapping_var
 from .utils import clip_to_bbox, geometries_as_dask_array, is_in_memory
 
 if TYPE_CHECKING:
@@ -223,8 +224,9 @@ def coverage(
     Parameters
     ----------
     obj : xarray.DataArray or xarray.Dataset
-        Xarray object defining the raster grid. Must contain a 'spatial_ref'
-        coordinate variable with CRS information.
+        Xarray object defining the raster grid. If a grid mapping coordinate
+        variable (e.g. ``spatial_ref``) is present, it will be propagated to
+        the output.
     geometries : geopandas.GeoDataFrame or dask_geopandas.GeoDataFrame
         Vector geometries for which to calculate coverage. CRS should match
         the raster object (though this is not currently enforced).
@@ -257,8 +259,7 @@ def coverage(
     Raises
     ------
     ValueError
-        If the raster object lacks a 'spatial_ref' coordinate or if exactextract
-        encounters chunks of size 1 (not supported by exactextract).
+        If exactextract encounters chunks of size 1 (not supported by exactextract).
 
     See Also
     --------
@@ -285,9 +286,6 @@ def coverage(
     >>> print(area_coverage.units)  # 'm2'
 
     """
-    if "spatial_ref" not in obj.coords:
-        raise ValueError("Xarray object must contain the `spatial_ref` variable.")
-
     # FIXME: assert obj.crs == geometries.crs
 
     if clip:
@@ -344,9 +342,12 @@ def coverage(
         for dim in (xdim, ydim)
         if obj.xindexes.get(dim) is not None
     ]
+    grid_mapping_coords: dict = {}
+    if (grid_mapping := get_grid_mapping_var(obj)) is not None:
+        grid_mapping_coords[grid_mapping.name] = grid_mapping
     coords = xr.Coordinates(
         coords={
-            "spatial_ref": obj.spatial_ref,
+            **grid_mapping_coords,
             "geometry": geom_array,
         },
         indexes={},

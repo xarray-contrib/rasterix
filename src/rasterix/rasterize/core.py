@@ -8,7 +8,7 @@ import geopandas as gpd
 import numpy as np
 import xarray as xr
 
-from ..utils import get_affine
+from ..utils import get_affine, get_grid_mapping_var
 from .utils import XAXIS, YAXIS, clip_to_bbox, is_in_memory, prepare_for_dask
 
 if TYPE_CHECKING:
@@ -282,15 +282,18 @@ def rasterize(
         # and reduce every other value by 1
         rasterized = rasterized.map_blocks(partial(replace_values, to=num_geoms))
 
+    coord_vars: dict = {
+        xdim: obj.coords[xdim],
+        ydim: obj.coords[ydim],
+    }
+    if (grid_mapping := get_grid_mapping_var(obj)) is not None:
+        coord_vars[grid_mapping.name] = grid_mapping
+
     return xr.DataArray(
         dims=(ydim, xdim),
         data=rasterized,
         coords=xr.Coordinates(
-            coords={
-                xdim: obj.coords[xdim],
-                ydim: obj.coords[ydim],
-                "spatial_ref": obj.spatial_ref,
-            },
+            coords=coord_vars,
             indexes={xdim: obj.xindexes[xdim], ydim: obj.xindexes[ydim]},
         ),
         name="rasterized",
@@ -406,15 +409,18 @@ def geometry_mask(
         if invert:
             mask = ~mask
 
+    coord_vars: dict = {
+        xdim: obj.coords[xdim],
+        ydim: obj.coords[ydim],
+    }
+    if (grid_mapping := get_grid_mapping_var(obj)) is not None:
+        coord_vars[grid_mapping.name] = grid_mapping
+
     return xr.DataArray(
         dims=(ydim, xdim),
         data=mask,
         coords=xr.Coordinates(
-            coords={
-                xdim: obj.coords[xdim],
-                ydim: obj.coords[ydim],
-                "spatial_ref": obj.spatial_ref,
-            },
+            coords=coord_vars,
             indexes={xdim: obj.xindexes[xdim], ydim: obj.xindexes[ydim]},
         ),
         name="mask",

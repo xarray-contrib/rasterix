@@ -29,8 +29,13 @@ def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
                     # make sure it exists and is not an out-of-date attribute
                     grid_mapping_var = maybe
                     break
+    if grid_mapping_var is None:
+        try:
+            if crs_indexes := obj.proj.crs_indexes:
+                grid_mapping_var = next(iter(crs_indexes))
+        except AttributeError:
+            pass
     if grid_mapping_var is None and "spatial_ref" in obj.coords:
-        # hardcode this
         grid_mapping_var = "spatial_ref"
     if grid_mapping_var is not None:
         return obj[grid_mapping_var]
