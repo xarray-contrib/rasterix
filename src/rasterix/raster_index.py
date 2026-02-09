@@ -20,8 +20,9 @@ from xarray.core.types import JoinOptions
 from xproj.typing import CRSAwareIndex
 
 from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, maybe_int, snap_grid
+from rasterix.options import get_options as get_rasterix_options
 from rasterix.rioxarray_compat import guess_dims
-from rasterix.utils import get_affine
+from rasterix.utils import get_affine, get_crs_from_proj_zarr_convention
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
@@ -87,22 +88,34 @@ def assign_index(
 
     affine = get_affine(obj, x_dim=x_dim, y_dim=y_dim, clear_transform=True)
 
+    detected_crs = obj.proj.crs if crs else None
+    if detected_crs is None:
+        detected_crs = get_crs_from_proj_zarr_convention(obj)
+
     index = RasterIndex.from_transform(
         affine,
         width=obj.sizes[x_dim],
         height=obj.sizes[y_dim],
         x_dim=x_dim,
         y_dim=y_dim,
-        crs=obj.proj.crs if crs else None,
+        crs=detected_crs,
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
 
 
+def _isclose(a: float, b: float) -> bool:
+    """Check if two floats are close using rasterix tolerance options."""
+    opts = get_rasterix_options()
+    return math.isclose(a, b, rel_tol=opts["transform_rtol"], abs_tol=opts["transform_atol"])
+
+
 def _assert_transforms_are_compatible(*affines) -> None:
     A1 = affines[0]
     for index, A2 in enumerate(affines[1:]):
-        if A1.a != A2.a or A1.b != A2.b or A1.d != A2.d or A1.e != A2.e:
+        if not (
+            _isclose(A1.a, A2.a) and _isclose(A1.b, A2.b) and _isclose(A1.d, A2.d) and _isclose(A1.e, A2.e)
+        ):
             raise ValueError(
                 f"Transform parameters are not compatible for affine 0: {A1}, and affine {index + 1} {A2}"
             )
@@ -219,9 +232,9 @@ class AxisAffineTransform(CoordinateTransform):
 
         # only compare the affine parameters of the relevant axis
         if self.is_xaxis:
-            affine_match = self.affine.a == other.affine.a and self.affine.c == other.affine.c
+            affine_match = _isclose(self.affine.a, other.affine.a) and _isclose(self.affine.c, other.affine.c)
         else:
-            affine_match = self.affine.e == other.affine.e and self.affine.f == other.affine.f
+            affine_match = _isclose(self.affine.e, other.affine.e) and _isclose(self.affine.f, other.affine.f)
 
         return affine_match and self.size == other.size
 
@@ -583,6 +596,89 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         return cls(index, crs=crs)
 
     @classmethod
+    def from_geotransform(
+        cls,
+        geotransform: Sequence[float] | str,
+        *,
+        width: int,
+        height: int,
+        x_dim: str = "x",
+        y_dim: str = "y",
+        x_coord_name: str = "xc",
+        y_coord_name: str = "yc",
+        crs: CRS | Any | None = None,
+    ) -> RasterIndex:
+        """Create a RasterIndex from a GDAL-style GeoTransform.
+
+        Parameters
+        ----------
+        geotransform : sequence of float or str
+            GDAL GeoTransform as a 6-element sequence (c, a, b, f, d, e) or a
+            space-separated string of 6 numbers. The elements are:
+            - c: x-coordinate of the upper-left corner of the upper-left pixel
+            - a: pixel width (x-direction resolution)
+            - b: row rotation (typically 0)
+            - f: y-coordinate of the upper-left corner of the upper-left pixel
+            - d: column rotation (typically 0)
+            - e: pixel height (y-direction resolution, typically negative)
+        width : int
+            Number of pixels in the x direction.
+        height : int
+            Number of pixels in the y direction.
+        x_dim : str, optional
+            Name for the x dimension.
+        y_dim : str, optional
+            Name for the y dimension.
+        x_coord_name : str, optional
+            Name for the x coordinate. For non-rectilinear transforms only.
+        y_coord_name : str, optional
+            Name for the y coordinate. For non-rectilinear transforms only.
+        crs : :class:`pyproj.crs.CRS` or any, optional
+            The coordinate reference system. Any value accepted by
+            :meth:`pyproj.crs.CRS.from_user_input`.
+
+        Returns
+        -------
+        RasterIndex
+            A new RasterIndex object with appropriate internal structure.
+
+        See Also
+        --------
+        from_transform : Create from an Affine transform.
+        as_geotransform : Convert RasterIndex back to GeoTransform string.
+
+        References
+        ----------
+        - `GDAL GeoTransform tutorial <https://gdal.org/en/stable/tutorials/geotransforms_tut.html>`_
+
+        Examples
+        --------
+        Create from a sequence:
+
+        >>> geotransform = (323400.0, 30.0, 0.0, 4265400.0, 0.0, -30.0)
+        >>> index = RasterIndex.from_geotransform(geotransform, width=100, height=100)
+
+        Create from a string (as stored in netCDF attributes):
+
+        >>> geotransform = "323400.0 30.0 0.0 4265400.0 0.0 -30.0"
+        >>> index = RasterIndex.from_geotransform(geotransform, width=100, height=100)
+        """
+        if isinstance(geotransform, str):
+            geotransform = tuple(map(float, geotransform.split()))
+
+        affine = Affine.from_gdal(*geotransform)
+        return cls.from_transform(
+            affine,
+            width=width,
+            height=height,
+            x_dim=x_dim,
+            y_dim=y_dim,
+            x_coord_name=x_coord_name,
+            y_coord_name=y_coord_name,
+            crs=crs,
+        )
+
+    @classmethod
     def from_tiepoint_and_scale(
         cls,
         *,
@@ -895,13 +991,19 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
 
     def _new_with_bbox(self, bbox: BoundingBox) -> RasterIndex:
         affine = self.transform()
-        new_affine, Nx, Ny = bbox_to_affine(bbox, rx=affine.a, ry=affine.e)
+        new_affine, Nx, Ny = bbox_to_affine(bbox, affine)
         # TODO: set xdim, ydim explicitly
         new_index = self.from_transform(new_affine, width=Nx, height=Ny)
-        assert new_index.bbox == bbox
+        opts = get_rasterix_options()
+        assert new_index.bbox.isclose(bbox, rtol=opts["transform_rtol"], atol=opts["transform_atol"])
         return new_index
 
     def join(self, other: RasterIndex, how: JoinOptions = "inner") -> RasterIndex:
+        """Join two RasterIndexes by computing the union or intersection of their bounding boxes.
+
+        Transform compatibility is checked using the tolerance configured via
+        :py:func:`rasterix.set_options` (``transform_rtol`` and ``transform_atol``).
+        """
         if not self._proj_crs_equals(cast(CRSAwareIndex, other), allow_none=True):
             raise ValueError(
                 "raster indexes on objects to align do not have the same CRS\n"
@@ -984,18 +1086,28 @@ def get_indexer(off, our_off, start, stop, spacing, tol, size) -> np.ndarray:
     return idxr
 
 
-def bbox_to_affine(bbox: BoundingBox, rx, ry) -> tuple[Affine, int, int]:
+def bbox_to_affine(bbox: BoundingBox, affine: Affine) -> tuple[Affine, int, int]:
     # Fraction of a pixel that can be ignored, defaults to 1/100. Bounding box of the output
     # geobox is allowed to be smaller than supplied bounding box by that amount.
     # FIXME: translate user-provided `tolerance` to `tol`
     tol: float = 0.01
 
-    offx, nx = snap_grid(bbox.left, bbox.right, rx, 0, tol=tol)
-    offy, ny = snap_grid(bbox.bottom, bbox.top, ry, 0, tol=tol)
+    rx = affine.a
+    ry = affine.e
 
-    affine = Affine.translation(offx, offy) * Affine.scale(rx, ry)
+    # Calculate the pixel fraction offset from the affine's grid alignment.
+    # This ensures the new grid aligns with the original grid rather than snapping
+    # to a global grid at x=0, y=0.
+    # See https://github.com/xarray-contrib/rasterix/issues/67
+    off_pix_x = (affine.c / abs(rx)) % 1.0
+    off_pix_y = (affine.f / abs(ry)) % 1.0
 
-    return affine, nx, ny
+    offx, nx = snap_grid(bbox.left, bbox.right, rx, off_pix_x, tol=tol)
+    offy, ny = snap_grid(bbox.bottom, bbox.top, ry, off_pix_y, tol=tol)
+
+    new_affine = Affine.translation(offx, offy) * Affine.scale(rx, ry)
+
+    return new_affine, nx, ny
 
 
 def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> tuple[BoundingBox, ...]:
@@ -1013,24 +1125,24 @@ def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> 
     off_y = tuple(t.f for t in transforms)
 
     if concat_dim is not None:
-        if all(o == off_x[0] for o in off_x[1:]) and all(o == off_y[0] for o in off_y[1:]):
+        if all(_isclose(o, off_x[0]) for o in off_x[1:]) and all(_isclose(o, off_y[0]) for o in off_y[1:]):
             raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
 
     # note: Xarray alignment already ensures that the indexes dimensions are compatible.
     x_dim, y_dim = indexes[0].xy_dims
 
     if concat_dim == x_dim:
-        if any(off_y[0] != o for o in off_y[1:]):
-            raise ValueError("offsets must be identical in X when concatenating along Y")
-        if any(a != b for a, b in zip(off_x, expected_off_x)):
+        if any(not _isclose(off_y[0], o) for o in off_y[1:]):
+            raise ValueError("offsets must be identical in Y when concatenating along X")
+        if any(not _isclose(a, b) for a, b in zip(off_x, expected_off_x)):
             raise ValueError(
                 f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
             )
     elif concat_dim == y_dim:
-        if any(off_x[0] != o for o in off_x[1:]):
+        if any(not _isclose(off_x[0], o) for o in off_x[1:]):
             raise ValueError("offsets must be identical in X when concatenating along Y")
 
-        if any(a != b for a, b in zip(off_y, expected_off_y)):
+        if any(not _isclose(a, b) for a, b in zip(off_y, expected_off_y)):
             raise ValueError(
                 f"Y offsets are incompatible. Provided offsets {off_y}, expected offsets: {expected_off_y}"
             )

@@ -7,15 +7,16 @@ import xarray as xr
 from affine import Affine
 from xarray.testing import assert_identical
 
-from rasterix import RasterIndex, assign_index
+from rasterix import RasterIndex, assign_index, set_options
+from rasterix.raster_index import _assert_transforms_are_compatible
 from rasterix.utils import get_grid_mapping_var
 
 CRS_ATTRS = pyproj.CRS.from_epsg(4326).to_cf()
 
 
-def dataset_from_transform(transform: str) -> xr.Dataset:
+def dataset_from_transform(transform: str, width: int = 2, height: int = 4) -> xr.Dataset:
     return xr.Dataset(
-        {"foo": (("y", "x"), np.ones((4, 2)), {"grid_mapping": "spatial_ref"})},
+        {"foo": (("y", "x"), np.ones((height, width)), {"grid_mapping": "spatial_ref"})},
         coords={"spatial_ref": ((), 0, CRS_ATTRS | {"GeoTransform": transform})},
     ).pipe(assign_index)
 
@@ -408,6 +409,39 @@ def test_align():
         aligned = xr.align(*datasets, join="exact")
 
 
+def test_join_partially_overlapping_indexes():
+    """Test joining two partially overlapping indexes with non-grid-aligned coordinates.
+
+    Regression test for https://github.com/xarray-contrib/rasterix/issues/67
+
+    This tests the case where the transform coordinates are not aligned to a global
+    grid at x=0, y=0 (e.g., 399955.0 / 10.0 = 39995.5, which has a 0.5 pixel offset).
+    """
+    transform1 = Affine.from_gdal(399955.0, 10.0, 0.0, 5500025.0, 0.0, -10.0)
+    transform2 = Affine.from_gdal(399955.0, 10.0, 0.0, 5497625.0, 0.0, -10.0)
+
+    index1 = RasterIndex.from_transform(transform1, width=256, height=256)
+    index2 = RasterIndex.from_transform(transform2, width=256, height=256)
+
+    # Inner join should produce a 256x16 pixel index (the overlap region)
+    result = index1.join(index2, how="inner")
+
+    assert result.xy_shape == (256, 16)
+    assert result.bbox.left == 399955.0
+    assert result.bbox.right == 402515.0
+    assert result.bbox.bottom == 5497465.0
+    assert result.bbox.top == 5497625.0
+
+    # Outer join should produce a 256x496 pixel index (combined coverage)
+    result_outer = index1.join(index2, how="outer")
+
+    assert result_outer.xy_shape == (256, 496)  # 256 + 256 - 16 = 496
+    assert result_outer.bbox.left == 399955.0
+    assert result_outer.bbox.right == 402515.0
+    assert result_outer.bbox.bottom == 5495065.0
+    assert result_outer.bbox.top == 5500025.0
+
+
 def test_repr_inline() -> None:
     index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)
     ds1 = xr.Dataset(coords=xr.Coordinates.from_xindex(index1))
@@ -566,6 +600,82 @@ def test_assign_index_with_stac_proj_transform_9_elements():
     assert actual_affine == expected_affine
 
 
+@pytest.mark.parametrize(
+    "convention_spec",
+    [
+        {"name": "spatial:"},  # optional
+        {"uuid": "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4"},  # mandatory
+    ],
+)
+def test_assign_index_with_spatial_zarr_convention(convention_spec: dict[str, str]):
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [convention_spec],
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    # Check that the index was created
+    assert isinstance(result.xindexes["x"], RasterIndex)
+    assert isinstance(result.xindexes["y"], RasterIndex)
+
+    # Verify the affine transform
+    expected_affine = Affine(30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0)
+    actual_affine = result.xindexes["x"].transform()
+    assert actual_affine == expected_affine
+
+    # Verify spatial:transform attribute is removed
+    assert "spatial:transform" not in result.attrs
+
+
+def test_assign_index_with_spatial_zarr_convention_too_few_raises():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0],
+        },
+    )
+
+    with pytest.raises(ValueError, match="spatial:transform must have at least 6 elements"):
+        assign_index(da)
+
+
+def test_assign_index_with_spatial_zarr_convention_transform_type_not_implemented():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:transform_type": "not_affine",
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    with pytest.raises(NotImplementedError, match="Unsupported spatial:transform_type"):
+        assign_index(da)
+
+
+def test_assign_index_with_spatial_zarr_convention_registration_not_implemented():
+    da = xr.DataArray(
+        np.ones((100, 100)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:registration": "not_pixel",
+            "spatial:transform": [30.0, 0.0, 323400.0, 0.0, 30.0, 4268400.0],
+        },
+    )
+
+    with pytest.raises(NotImplementedError, match="Unsupported spatial:registration"):
+        assign_index(da)
+
+
 def test_assign_index_no_coords_no_metadata():
     """Test that assign_index raises error when coords are missing and no transform metadata."""
     da = xr.DataArray(np.ones((10, 10)), dims=("y", "x"))
@@ -708,6 +818,60 @@ def test_raster_index_from_stac_proj_metadata_with_crs():
     assert index.crs.to_epsg() == 32610
 
 
+@pytest.mark.parametrize(
+    "convention_spec",
+    [
+        {"name": "proj:"},  # optional
+        {"uuid": "f17cb550-5864-4468-aeb7-f3180cfb622f"},  # mandatory
+    ],
+)
+def test_assign_index_proj_zarr_convention_code(convention_spec: dict[str, str]):
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [convention_spec, {"name": "spatial:"}],
+            "proj:code": "EPSG:4326",
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 4326
+
+
+def test_assign_index_proj_zarr_convention_wkt2():
+    crs = pyproj.CRS.from_epsg(3857)
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "proj:wkt2": crs.to_wkt(),
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 3857
+
+
+def test_assign_index_proj_zarr_convention_projjson():
+    crs = pyproj.CRS.from_epsg(32610)
+    ds = xr.DataArray(
+        np.ones((3, 4)),
+        dims=("y", "x"),
+        attrs={
+            "zarr_conventions": [{"name": "proj:"}, {"name": "spatial:"}],
+            "proj:projjson": crs.to_json_dict(),
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        },
+    )
+    indexed = assign_index(ds)
+    assert indexed.xindexes["x"].crs is not None
+    assert indexed.xindexes["x"].crs.to_epsg() == 32610
+
+
 @pytest.fixture
 def edge_case_ds():
     """Create a 100x100 grid covering x=[0, 10], y=[-10, 0]."""
@@ -750,3 +914,33 @@ def test_sel_edge_cases(edge_case_ds, coord, sel_slice, expected_slice):
 
     # Verify slice is valid for array indexing
     edge_case_ds.sel({coord: sel_slice})
+
+
+def test_tolerance_in_concat():
+    """Test tolerance support in concatenation with real-world geotransforms."""
+    # User's geotransforms with tiny floating-point differences (~9e-13 relative)
+    # GeoTransform format: "c a b f d e" (origin_x, scale_x, skew_x, origin_y, skew_y, scale_y)
+    gt1 = "-8895604.157333 926.6254330549995 0.0 3335851.559 0.0 -926.6254330558334"
+    gt2 = "-7783653.637667 926.6254330558338 0.0 3335851.559 0.0 -926.6254330558334"
+
+    ds1 = dataset_from_transform(gt1, width=1200, height=10)
+    ds2 = dataset_from_transform(gt2, width=1200, height=10)
+
+    # Should succeed with default tolerance
+    result = xr.concat([ds1, ds2], dim="x")
+    assert result.sizes["x"] == 2400
+
+    # Should fail with zero tolerance
+    with set_options(transform_rtol=0, transform_atol=0):
+        with pytest.raises(ValueError, match="Transform parameters are not compatible"):
+            xr.concat([ds1, ds2], dim="x")
+
+    # Direct test of _assert_transforms_are_compatible with custom tolerance
+    a1 = Affine(1.0, 0.0, 0.0, 0.0, -1.0, 100.0)
+    a2 = Affine(1.0 + 1e-10, 0.0, 0.0, 0.0, -1.0 - 1e-10, 100.0)
+
+    with pytest.raises(ValueError):
+        _assert_transforms_are_compatible(a1, a2)  # fails with default 1e-12
+
+    with set_options(transform_rtol=1e-9):
+        _assert_transforms_are_compatible(a1, a2)  # passes with 1e-9

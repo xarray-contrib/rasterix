@@ -119,6 +119,9 @@ html_theme_options = dict(
     sidebar_hide_name=False,
     light_css_variables=css_vars,
     dark_css_variables=css_vars,
+    top_of_page_buttons=["view"],
+    source_repository="https://github.com/xarray-contrib/rasterix",
+    source_branch="main",
 )
 
 html_context = {

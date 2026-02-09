@@ -8,7 +8,7 @@ kernelspec:
 ---
 
 ```{eval-rst}
-.. currentmodule:: rasterix
+.. currentmodule:: rasterix.raster_index
 ```
 
 ```{code-cell} python

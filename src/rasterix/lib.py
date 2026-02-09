@@ -1,8 +1,13 @@
 """Shared library utilities for rasterix."""
 
 import logging
+from typing import NotRequired, TypedDict
 
 from affine import Affine
+
+# https://github.com/zarr-conventions/spatial
+_ZARR_SPATIAL_CONVENTION_UUID = "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4"
+
 
 # Define TRACE level (lower than DEBUG)
 TRACE = 5
@@ -104,3 +109,72 @@ def affine_from_stac_proj_metadata(metadata: dict) -> Affine | None:
 
     a, b, c, d, e, f = transform[:6]
     return Affine(a, b, c, d, e, f)
+
+
+_ZarrConventionRegistration = TypedDict("_ZarrConventionRegistration", {"spatial:": str})
+
+_ZarrSpatialMetadata = TypedDict(
+    "_ZarrSpatialMetadata",
+    {
+        "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
+        "spatial:transform": NotRequired[list[float]],
+        "spatial:transform_type": NotRequired[str],
+        "spatial:registration": NotRequired[str],
+    },
+)
+
+
+def _has_spatial_zarr_convention(metadata: _ZarrSpatialMetadata) -> bool:
+    zarr_conventions = metadata.get("zarr_conventions")
+    if not zarr_conventions:
+        return False
+    for entry in zarr_conventions:
+        if isinstance(entry, dict) and (
+            entry.get("uuid") == _ZARR_SPATIAL_CONVENTION_UUID or entry.get("name") == "spatial:"
+        ):
+            return True
+    return False
+
+
+def affine_from_spatial_zarr_convention(metadata: dict) -> Affine | None:
+    """Extract Affine transform from Zarr spatial convention metadata.
+
+    See https://github.com/zarr-conventions/spatial for the full specification.
+
+    Parameters
+    ----------
+    metadata : dict
+        Dictionary containing Zarr spatial convention metadata.
+
+    Returns
+    -------
+    Affine or None
+        Affine transformation matrix if minimal Zarr spatial metadata is found, None otherwise.
+
+    Examples
+    --------
+    >>> ds: xr.Dataset = ...
+    >>> affine = affine_from_spatial_zarr_convention(ds.attrs)
+    """
+    possibly_spatial_metadata: _ZarrSpatialMetadata = metadata  # type: ignore[assignment]
+
+    if _has_spatial_zarr_convention(possibly_spatial_metadata):
+        if transform := possibly_spatial_metadata.get("spatial:transform"):
+            if len(transform) < 6:
+                raise ValueError(f"spatial:transform must have at least 6 elements, got {len(transform)}")
+
+            transform_type = possibly_spatial_metadata.get("spatial:transform_type", "affine")
+            if transform_type != "affine":
+                raise NotImplementedError(
+                    f"Unsupported spatial:transform_type {transform_type!r}; only 'affine' is supported."
+                )
+
+            registration = possibly_spatial_metadata.get("spatial:registration", "pixel")
+            if registration != "pixel":
+                raise NotImplementedError(
+                    f"Unsupported spatial:registration {registration!r}; only 'pixel' is supported."
+                )
+
+            return Affine(*map(float, transform[:6]))
+
+    return None

@@ -1,3 +1,4 @@
+from .options import get_options, set_options
 from .raster_index import RasterIndex, assign_index
 
 
@@ -12,4 +13,4 @@ def _get_version():
 
 __version__ = _get_version()
 
-__all__ = ["RasterIndex", "assign_index"]
+__all__ = ["RasterIndex", "assign_index", "set_options", "get_options"]
