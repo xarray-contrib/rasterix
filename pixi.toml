@@ -49,9 +49,6 @@ rasterio = "*"
 [feature.with-rusterize.pypi-dependencies]
 rusterize = ">=0.7.1"
 
-[feature.with-xarray-dev.pypi-dependencies]
-xarray = { git = "https://github.com/pydata/xarray.git", rev = "26ccc7f8f014f29c551fd566a04d6e9f878c0b0b" }
-
 # ===== Docs feature =====
 
 [feature.docs.dependencies]
@@ -82,11 +79,24 @@ docs-build = { cmd = "sphinx-build -b html . _build/html", cwd = "docs" }
 docs-live = { cmd = "sphinx-autobuild -b html . _build/html", cwd = "docs" }
 docs-clean = { cmd = "rm -rf _build/* generated/*", cwd = "docs" }
 
+# ===== Dev feature =====
+
+[feature.dev-tools.dependencies]
+ipykernel = "*"
+snakeviz = "*"
+py-spy = "*"
+memray = "*"
+
+[feature.dev-tools.pypi-dependencies]
+pdbpp = "*"
+watermark = "*"
+
 # ===== Environments =====
 
 [environments]
-test-py311 = ["test-base", "with-rasterio", "with-xarray-dev", "py311"]
-test-py314 = ["test-base", "with-rasterio", "with-xarray-dev", "py314"]
-test-rusterize-py311 = ["test-base", "with-rusterize", "with-xarray-dev", "py311"]
-test-rusterize-py314 = ["test-base", "with-rusterize", "with-xarray-dev", "py314"]
+test-py311 = ["test-base", "with-rasterio", "py311"]
+test-py314 = ["test-base", "with-rasterio", "py314"]
+test-rusterize-py311 = ["test-base", "with-rusterize", "py311"]
+test-rusterize-py314 = ["test-base", "with-rusterize", "py314"]
+dev = ["test-base", "with-rasterio", "py314", "dev-tools"]
 docs = ["docs"]
