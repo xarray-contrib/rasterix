@@ -27,42 +27,42 @@ python = "3.14.*"
 
 # ===== Test base: shared across all test environments =====
 
-[feature.test-base.pypi-dependencies]
-coverage = "*"
-dask-geopandas = "*"
+[feature.test-base.dependencies]
+netcdf4 = "*"
 exactextract = "*"
+dask-geopandas = "*"
+sparse = "*"
+coverage = "*"
 geodatasets = "*"
 hypothesis = "*"
-netcdf4 = "*"
 pooch = "*"
 pytest = "*"
 pytest-cov = "*"
 pytest-xdist = "*"
-sparse = "*"
 
 # ===== Backend-specific test features =====
 
-[feature.with-rasterio.pypi-dependencies]
+[feature.with-rasterio.dependencies]
 rasterio = "*"
 
 [feature.with-rusterize.pypi-dependencies]
-rusterize = "*"
+rusterize = "<0.7"
 
 [feature.with-xarray-dev.pypi-dependencies]
 xarray = { git = "https://github.com/pydata/xarray.git", rev = "26ccc7f8f014f29c551fd566a04d6e9f878c0b0b" }
 
 # ===== Docs feature =====
 
-[feature.docs.pypi-dependencies]
+[feature.docs.dependencies]
+python = "3.12.*"
+netcdf4 = "*"
+rasterio = "*"
+exactextract = "*"
+dask-geopandas = "*"
+rioxarray = "*"
+sparse = "*"
 geodatasets = "*"
 pooch = "*"
-dask-geopandas = "*"
-rasterio = "*"
-rusterize = "*"
-rioxarray = "*"
-exactextract = "*"
-sparse = "*"
-netcdf4 = "*"
 sphinx = "*"
 sphinx-autoapi = "*"
 sphinx-autobuild = ">=2021.3.14"
@@ -73,7 +73,7 @@ myst-parser = "*"
 myst-nb = "*"
 furo = "*"
 numpydoc = "*"
-sphinxext-opengraph = { version = "*", extras = ["social_cards"] }
+sphinxext-opengraph = "*"
 xvec = "*"
 
 [feature.docs.tasks]
@@ -88,5 +88,4 @@ test-py311 = ["test-base", "with-rasterio", "with-xarray-dev", "py311"]
 test-py314 = ["test-base", "with-rasterio", "with-xarray-dev", "py314"]
 test-rusterize-py311 = ["test-base", "with-rusterize", "with-xarray-dev", "py311"]
 test-rusterize-py314 = ["test-base", "with-rusterize", "with-xarray-dev", "py314"]
-test-all = ["test-base", "with-rasterio", "with-rusterize"]
 docs = ["docs"]
