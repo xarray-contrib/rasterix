@@ -211,7 +211,6 @@ def rasterize(
       Requires GDAL.
 
     - **rusterize**: A Rust-based rasterization engine. Does not require GDAL.
-      Does not support ``all_touched=True``.
 
     - **exactextract**: Uses the exactextract library for precise sub-pixel
       coverage computation. Any pixel with non-zero coverage is burned, which

@@ -47,7 +47,7 @@ pytest-xdist = "*"
 rasterio = "*"
 
 [feature.with-rusterize.pypi-dependencies]
-rusterize = "<0.7"
+rusterize = ">=0.7.1"
 
 [feature.with-xarray-dev.pypi-dependencies]
 xarray = { git = "https://github.com/pydata/xarray.git", rev = "26ccc7f8f014f29c551fd566a04d6e9f878c0b0b" }

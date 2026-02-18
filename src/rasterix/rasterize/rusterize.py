@@ -65,7 +65,6 @@ def rasterize_geometries(
         Starting value for geometry indices.
     all_touched : bool
         If True, all pixels touched by geometries will be burned in.
-        Note: rusterize may not support this parameter directly.
     merge_alg : str
         Merge algorithm. Supported values: "last", "sum", "first", "min", "max", "count", "any".
     fill : Any
@@ -79,12 +78,6 @@ def rasterize_geometries(
         Rasterized array with shape (nrows, ncols).
     """
     from rusterize import rusterize
-
-    if all_touched:
-        raise NotImplementedError(
-            "all_touched=True is not supported by the rusterize engine. "
-            "Use engine='rasterio' if you need all_touched support."
-        )
 
     # Create GeoDataFrame with index values
     # Dummy CRS required by rusterize but not used by the algorithm
@@ -102,6 +95,7 @@ def rasterize_geometries(
         field="value",
         fun=merge_alg,
         background=fill,
+        all_touched=all_touched,
         encoding="numpy",
         dtype=str(dtype),
     )
@@ -167,7 +161,6 @@ def np_geometry_mask(
         Affine transform for the output grid.
     all_touched : bool
         If True, all pixels touched by geometries will be included.
-        Note: rusterize may not support this parameter directly.
     invert : bool
         If True, pixels inside geometries are True (unmasked).
         If False (default), pixels inside geometries are False (masked).
@@ -180,12 +173,6 @@ def np_geometry_mask(
         Boolean mask array with shape (nrows, ncols).
     """
     from rusterize import rusterize
-
-    if all_touched:
-        raise NotImplementedError(
-            "all_touched=True is not supported by the rusterize engine. "
-            "Use engine='rasterio' if you need all_touched support."
-        )
 
     # Create GeoDataFrame with burn value
     # Dummy CRS required by rusterize but not used by the algorithm
@@ -202,6 +189,7 @@ def np_geometry_mask(
         burn=1,
         fun="any",
         background=0,
+        all_touched=all_touched,
         encoding="numpy",
         dtype="uint8",
     )
