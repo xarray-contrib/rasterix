@@ -21,16 +21,15 @@ def dataset():
         return ds
 
 
+@pytest.mark.parametrize("all_touched", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
-def test_rasterize(clip, engine, dataset):
-    # Use engine-specific snapshots due to pixel boundary differences:
-    # - rasterio: default (center-point) rasterization
-    # - rusterize: has its own boundary handling
-    # - exactextract: equivalent to all_touched=True (any coverage counts)
-    if engine == "rusterize":
-        suffix = "_rusterize"
-    elif engine == "exactextract":
-        suffix = "_all_touched"  # exactextract matches rasterio all_touched=True
+def test_rasterize(clip, all_touched, engine, dataset):
+    if engine == "exactextract" and all_touched:
+        pytest.skip("exactextract always behaves as all_touched=True; does not accept the parameter")
+
+    # exactextract inherently matches the all_touched snapshot
+    if all_touched or engine == "exactextract":
+        suffix = "_all_touched"
     else:
         suffix = ""
     fname = f"rasterize_snapshot{suffix}.nc"
@@ -43,7 +42,7 @@ def test_rasterize(clip, engine, dataset):
         snapshot = snapshot.sel(latitude=slice(83.25, None))
 
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
-    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, engine=engine)
+    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, all_touched=all_touched, engine=engine)
     rasterized = rasterize(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
     assert rasterized.dtype == "uint8"
@@ -68,17 +67,16 @@ def test_rasterize(clip, engine, dataset):
         xr.testing.assert_identical(drasterized, snapshot)
 
 
+@pytest.mark.parametrize("all_touched", [False, True])
 @pytest.mark.parametrize("invert", [False, True])
 @pytest.mark.parametrize("clip", [False, True])
-def test_geometry_mask(clip, invert, engine, dataset):
-    # Use engine-specific snapshots due to pixel boundary differences:
-    # - rasterio: default (center-point) rasterization
-    # - rusterize: has its own boundary handling
-    # - exactextract: equivalent to all_touched=True (any coverage counts)
-    if engine == "rusterize":
-        suffix = "_rusterize"
-    elif engine == "exactextract":
-        suffix = "_all_touched"  # exactextract matches rasterio all_touched=True
+def test_geometry_mask(clip, invert, all_touched, engine, dataset):
+    if engine == "exactextract" and all_touched:
+        pytest.skip("exactextract always behaves as all_touched=True; does not accept the parameter")
+
+    # exactextract inherently matches the all_touched snapshot
+    if all_touched or engine == "exactextract":
+        suffix = "_all_touched"
     else:
         suffix = ""
     fname = f"geometry_mask_snapshot{suffix}.nc"
@@ -93,7 +91,9 @@ def test_geometry_mask(clip, invert, engine, dataset):
 
     world = gpd.read_file(geodatasets.get_path("naturalearth land"))
 
-    kwargs = dict(xdim="longitude", ydim="latitude", clip=clip, invert=invert, engine=engine)
+    kwargs = dict(
+        xdim="longitude", ydim="latitude", clip=clip, invert=invert, all_touched=all_touched, engine=engine
+    )
     rasterized = geometry_mask(dataset, world[["geometry"]], **kwargs)
     xr.testing.assert_identical(rasterized, snapshot)
 
