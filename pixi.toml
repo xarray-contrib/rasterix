@@ -1,0 +1,92 @@
+[workspace]
+name = "rasterix-dev"
+channels = ["conda-forge"]
+platforms = ["linux-64", "osx-arm64"]
+
+[dependencies]
+python = ">=3.11"
+
+[pypi-dependencies]
+rasterix = { path = ".", editable = true }
+
+# ===== Tasks =====
+
+[tasks]
+test = "pytest -nauto --cov-config=pyproject.toml --cov=src --cov-report xml --junitxml=junit.xml -o junit_family=legacy"
+test-no-cov = "pytest -nauto"
+list-env = "pip list"
+type-check = "mypy src"
+
+# ===== Python version features =====
+
+[feature.py311.dependencies]
+python = "3.11.*"
+
+[feature.py314.dependencies]
+python = "3.14.*"
+
+# ===== Test base: shared across all test environments =====
+
+[feature.test-base.pypi-dependencies]
+coverage = "*"
+dask-geopandas = "*"
+exactextract = "*"
+geodatasets = "*"
+hypothesis = "*"
+netcdf4 = "*"
+pooch = "*"
+pytest = "*"
+pytest-cov = "*"
+pytest-xdist = "*"
+sparse = "*"
+
+# ===== Backend-specific test features =====
+
+[feature.with-rasterio.pypi-dependencies]
+rasterio = "*"
+
+[feature.with-rusterize.pypi-dependencies]
+rusterize = "*"
+
+[feature.with-xarray-dev.pypi-dependencies]
+xarray = { git = "https://github.com/pydata/xarray.git", rev = "26ccc7f8f014f29c551fd566a04d6e9f878c0b0b" }
+
+# ===== Docs feature =====
+
+[feature.docs.pypi-dependencies]
+geodatasets = "*"
+pooch = "*"
+dask-geopandas = "*"
+rasterio = "*"
+rusterize = "*"
+rioxarray = "*"
+exactextract = "*"
+sparse = "*"
+netcdf4 = "*"
+sphinx = "*"
+sphinx-autoapi = "*"
+sphinx-autobuild = ">=2021.3.14"
+sphinx-copybutton = "*"
+sphinx-remove-toctrees = "*"
+sphinx-codeautolink = "*"
+myst-parser = "*"
+myst-nb = "*"
+furo = "*"
+numpydoc = "*"
+sphinxext-opengraph = { version = "*", extras = ["social_cards"] }
+xvec = "*"
+
+[feature.docs.tasks]
+docs-build = { cmd = "sphinx-build -b html . _build/html", cwd = "docs" }
+docs-live = { cmd = "sphinx-autobuild -b html . _build/html", cwd = "docs" }
+docs-clean = { cmd = "rm -rf _build/* generated/*", cwd = "docs" }
+
+# ===== Environments =====
+
+[environments]
+test-py311 = ["test-base", "with-rasterio", "with-xarray-dev", "py311"]
+test-py314 = ["test-base", "with-rasterio", "with-xarray-dev", "py314"]
+test-rusterize-py311 = ["test-base", "with-rusterize", "with-xarray-dev", "py311"]
+test-rusterize-py314 = ["test-base", "with-rusterize", "with-xarray-dev", "py314"]
+test-all = ["test-base", "with-rasterio", "with-rusterize"]
+docs = ["docs"]
