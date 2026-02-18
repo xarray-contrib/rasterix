@@ -80,12 +80,6 @@ def rasterize_geometries(
     """
     from rusterize import rusterize
 
-    if all_touched:
-        raise NotImplementedError(
-            "all_touched=True is not supported by the rusterize engine. "
-            "Use engine='rasterio' if you need all_touched support."
-        )
-
     # Create GeoDataFrame with index values
     # Dummy CRS required by rusterize but not used by the algorithm
     # https://github.com/ttrotto/rusterize/issues/10

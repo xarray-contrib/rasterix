@@ -429,7 +429,7 @@ def rasterize_geometries(
     if all_touched:
         raise NotImplementedError(
             "all_touched=True is not supported by the exactextract engine. "
-            "Use engine='rasterio' if you need all_touched support."
+            "Use engine='rusterize' or engine='rasterio' if you need all_touched support."
         )
 
     if len(geometries) == 0:
@@ -540,7 +540,7 @@ def np_geometry_mask(
     if all_touched:
         raise NotImplementedError(
             "all_touched=True is not supported by the exactextract engine. "
-            "Use engine='rasterio' if you need all_touched support."
+            "Use engine='rasterio' or engine='rusterize' if you need all_touched support."
         )
 
     if len(geometries) == 0:

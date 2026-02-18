@@ -1989,7 +1989,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/0a/49/737c1a6273c585719858261753da0b688454d1b634438ccba8a9c4eb5aab/polars-1.38.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f2/5a/61d60ec5cc0ab37cbd5a699edb2f9af2875b7fdfdfb2a4608ca3cc5f0448/polars_runtime_32-1.38.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/ad/ab/9bdb4a6216b712a1f9aab1c0fcbee5d3726f34a366f29c3e8c08a78d6b70/pyproj-3.7.2-cp311-cp311-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/40/2b/8effc0a94381c7100ff3817125588bb3de0f77ac29b8a1c0bc18f279b6e9/rusterize-0.6.1-cp311-abi3-manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/7c/da/4f8e3a8f7e76933f8a9e4b9e1628b238c32cc91d8393360e787048a28fc3/rusterize-0.7.1-cp311-abi3-manylinux_2_28_x86_64.whl
       - pypi: git+https://github.com/pydata/xarray.git?rev=26ccc7f8f014f29c551fd566a04d6e9f878c0b0b#26ccc7f8f014f29c551fd566a04d6e9f878c0b0b
       - pypi: https://files.pythonhosted.org/packages/05/b9/b6a9cf72aef69c3e6db869dcc130e19452a658366dac9377f9cd32a76b80/xproj-0.2.1-py3-none-any.whl
       - pypi: ./
@@ -2221,7 +2221,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/0a/49/737c1a6273c585719858261753da0b688454d1b634438ccba8a9c4eb5aab/polars-1.38.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a7/fb/599ff3709e6a303024efd7edfd08cf8de55c6ac39527d8f41cbc4399385f/polars_runtime_32-1.38.1-cp310-abi3-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/04/90/67bd7260b4ea9b8b20b4f58afef6c223ecb3abf368eb4ec5bc2cdef81b49/pyproj-3.7.2.tar.gz
-      - pypi: https://files.pythonhosted.org/packages/60/43/5fa17096f730089bb8dd81809de3f50fbc691fb57556da044f109eb9ffcc/rusterize-0.6.1-cp311-abi3-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/b1/80/09090489d4d5bd4e4349792e47c8efc1ac6e35664c728daf188e5d2ff811/rusterize-0.7.1-cp311-abi3-macosx_11_0_arm64.whl
       - pypi: git+https://github.com/pydata/xarray.git?rev=26ccc7f8f014f29c551fd566a04d6e9f878c0b0b#26ccc7f8f014f29c551fd566a04d6e9f878c0b0b
       - pypi: https://files.pythonhosted.org/packages/05/b9/b6a9cf72aef69c3e6db869dcc130e19452a658366dac9377f9cd32a76b80/xproj-0.2.1-py3-none-any.whl
       - pypi: ./
@@ -2480,7 +2480,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/0a/49/737c1a6273c585719858261753da0b688454d1b634438ccba8a9c4eb5aab/polars-1.38.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/f2/5a/61d60ec5cc0ab37cbd5a699edb2f9af2875b7fdfdfb2a4608ca3cc5f0448/polars_runtime_32-1.38.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - pypi: https://files.pythonhosted.org/packages/05/1e/ada6fb15a1d75b5bd9b554355a69a798c55a7dcc93b8d41596265c1772e3/pyproj-3.7.2-cp314-cp314-manylinux_2_28_x86_64.whl
-      - pypi: https://files.pythonhosted.org/packages/40/2b/8effc0a94381c7100ff3817125588bb3de0f77ac29b8a1c0bc18f279b6e9/rusterize-0.6.1-cp311-abi3-manylinux_2_28_x86_64.whl
+      - pypi: https://files.pythonhosted.org/packages/7c/da/4f8e3a8f7e76933f8a9e4b9e1628b238c32cc91d8393360e787048a28fc3/rusterize-0.7.1-cp311-abi3-manylinux_2_28_x86_64.whl
       - pypi: git+https://github.com/pydata/xarray.git?rev=26ccc7f8f014f29c551fd566a04d6e9f878c0b0b#26ccc7f8f014f29c551fd566a04d6e9f878c0b0b
       - pypi: https://files.pythonhosted.org/packages/05/b9/b6a9cf72aef69c3e6db869dcc130e19452a658366dac9377f9cd32a76b80/xproj-0.2.1-py3-none-any.whl
       - pypi: ./
@@ -2713,7 +2713,7 @@ environments:
       - pypi: https://files.pythonhosted.org/packages/0a/49/737c1a6273c585719858261753da0b688454d1b634438ccba8a9c4eb5aab/polars-1.38.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/a7/fb/599ff3709e6a303024efd7edfd08cf8de55c6ac39527d8f41cbc4399385f/polars_runtime_32-1.38.1-cp310-abi3-macosx_11_0_arm64.whl
       - pypi: https://files.pythonhosted.org/packages/04/90/67bd7260b4ea9b8b20b4f58afef6c223ecb3abf368eb4ec5bc2cdef81b49/pyproj-3.7.2.tar.gz
-      - pypi: https://files.pythonhosted.org/packages/60/43/5fa17096f730089bb8dd81809de3f50fbc691fb57556da044f109eb9ffcc/rusterize-0.6.1-cp311-abi3-macosx_11_0_arm64.whl
+      - pypi: https://files.pythonhosted.org/packages/b1/80/09090489d4d5bd4e4349792e47c8efc1ac6e35664c728daf188e5d2ff811/rusterize-0.7.1-cp311-abi3-macosx_11_0_arm64.whl
       - pypi: git+https://github.com/pydata/xarray.git?rev=26ccc7f8f014f29c551fd566a04d6e9f878c0b0b#26ccc7f8f014f29c551fd566a04d6e9f878c0b0b
       - pypi: https://files.pythonhosted.org/packages/05/b9/b6a9cf72aef69c3e6db869dcc130e19452a658366dac9377f9cd32a76b80/xproj-0.2.1-py3-none-any.whl
       - pypi: ./
@@ -10954,8 +10954,8 @@ packages:
   timestamp: 1767632864203
 - pypi: ./
   name: rasterix
-  version: 0.2.1.dev8+g81cac62b3
-  sha256: f8a91cc6ab16ef8262c10fd02355629c054cda67da9585953f8f27f6f27e6c31
+  version: 0.2.1.dev8+ga3ee1550b.d20260218
+  sha256: 5c7077ae869795c7ab0e62b3126abca131ddefd28831c620adb8fb71e386b35b
   requires_dist:
   - affine
   - numpy>=2
@@ -10974,7 +10974,7 @@ packages:
   - pooch ; extra == 'docs'
   - rasterio ; extra == 'docs'
   - rioxarray ; extra == 'docs'
-  - rusterize ; extra == 'docs'
+  - rusterize>=0.7.1 ; extra == 'docs'
   - sparse ; extra == 'docs'
   - sphinx ; extra == 'docs'
   - sphinx-autoapi ; extra == 'docs'
@@ -10987,7 +10987,7 @@ packages:
   - exactextract ; extra == 'exactextract'
   - sparse ; extra == 'exactextract'
   - rasterio ; extra == 'rasterize'
-  - rusterize ; extra == 'rusterize'
+  - rusterize>=0.7.1 ; extra == 'rusterize'
   requires_python: '>=3.11'
 - conda: https://conda.anaconda.org/conda-forge/linux-64/re2-2025.11.05-h5301d42_1.conda
   sha256: 3fc684b81631348540e9a42f6768b871dfeab532d3f47d5c341f1f83e2a2b2b2
@@ -11124,10 +11124,10 @@ packages:
   - pkg:pypi/rpds-py?source=hash-mapping
   size: 358853
   timestamp: 1764543161524
-- pypi: https://files.pythonhosted.org/packages/40/2b/8effc0a94381c7100ff3817125588bb3de0f77ac29b8a1c0bc18f279b6e9/rusterize-0.6.1-cp311-abi3-manylinux_2_28_x86_64.whl
+- pypi: https://files.pythonhosted.org/packages/7c/da/4f8e3a8f7e76933f8a9e4b9e1628b238c32cc91d8393360e787048a28fc3/rusterize-0.7.1-cp311-abi3-manylinux_2_28_x86_64.whl
   name: rusterize
-  version: 0.6.1
-  sha256: 569167f44127b0bdcdfc1fba9b49ee82ffb964ed4924e30e72994069b09e9a5e
+  version: 0.7.1
+  sha256: ea30d4ed8c1521db09b0e6b6b6cdf74091001cdabc48b3f27d8494238d56d252
   requires_dist:
   - geopandas>=1.0.1
   - pandas>=2.2.3
@@ -11136,10 +11136,10 @@ packages:
   - xarray>=2025.1.1 ; extra == 'xarray'
   - rioxarray>=0.18.2 ; extra == 'xarray'
   requires_python: '>=3.11'
-- pypi: https://files.pythonhosted.org/packages/60/43/5fa17096f730089bb8dd81809de3f50fbc691fb57556da044f109eb9ffcc/rusterize-0.6.1-cp311-abi3-macosx_11_0_arm64.whl
+- pypi: https://files.pythonhosted.org/packages/b1/80/09090489d4d5bd4e4349792e47c8efc1ac6e35664c728daf188e5d2ff811/rusterize-0.7.1-cp311-abi3-macosx_11_0_arm64.whl
   name: rusterize
-  version: 0.6.1
-  sha256: 5509b437a0652bf15f8fb7f761b3ce465d3d0a97a7bb0ae1fcea71b7d6f8e6ad
+  version: 0.7.1
+  sha256: 73ebd705b766f285a500bf203a019ecd26d0ba9066fbbe842bc0ffb973ba5967
   requires_dist:
   - geopandas>=1.0.1
   - pandas>=2.2.3
