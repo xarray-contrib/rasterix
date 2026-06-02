@@ -117,6 +117,7 @@ _ZarrSpatialMetadata = TypedDict(
     "_ZarrSpatialMetadata",
     {
         "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
+        "spatial:dimensions": NotRequired[list[str]],
         "spatial:transform": NotRequired[list[float]],
         "spatial:transform_type": NotRequired[str],
         "spatial:registration": NotRequired[str],
@@ -176,5 +177,35 @@ def affine_from_spatial_zarr_convention(metadata: dict) -> Affine | None:
                 )
 
             return Affine(*map(float, transform[:6]))
+
+    return None
+
+
+def spatial_dims_from_zarr_convention(metadata: dict) -> tuple[str, str] | None:
+    """Extract spatial dimension names from Zarr spatial convention metadata.
+
+    See https://github.com/zarr-conventions/spatial for the full specification.
+
+    Parameters
+    ----------
+    metadata : dict
+        Dictionary containing Zarr spatial convention metadata.
+
+    Returns
+    -------
+    tuple of str or None
+        The two spatial dimension names from ``spatial:dimensions``, in the order
+        they are listed, if present. The convention does not assign meaning to the
+        order; consumers must map names to axes themselves. None if the convention
+        is not registered or ``spatial:dimensions`` is absent.
+    """
+    possibly_spatial_metadata: _ZarrSpatialMetadata = metadata  # type: ignore[assignment]
+
+    if _has_spatial_zarr_convention(possibly_spatial_metadata):
+        if dims := possibly_spatial_metadata.get("spatial:dimensions"):
+            if len(dims) != 2:
+                raise ValueError(f"spatial:dimensions must have exactly 2 elements, got {len(dims)}")
+            first, second = dims
+            return str(first), str(second)
 
     return None

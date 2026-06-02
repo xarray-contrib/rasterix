@@ -1,4 +1,5 @@
-from typing import NotRequired, TypedDict
+from collections.abc import Iterator
+from typing import Any, NotRequired, TypedDict
 
 import xarray as xr
 from affine import Affine
@@ -9,6 +10,7 @@ from rasterix.lib import (
     affine_from_stac_proj_metadata,
     affine_from_tiepoint_and_scale,
     logger,
+    spatial_dims_from_zarr_convention,
 )
 
 # https://github.com/zarr-conventions/geo-proj
@@ -39,6 +41,61 @@ def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
         grid_mapping_var = "spatial_ref"
     if grid_mapping_var is not None:
         return obj[grid_mapping_var]
+    return None
+
+
+def _iter_spatial_zarr_metadata(
+    obj: xr.Dataset | xr.DataArray,
+) -> Iterator[tuple[dict[str, Any], tuple[dict[str, Any], ...]]]:
+    """Yield candidate metadata dicts for the Zarr ``spatial:`` convention.
+
+    Yields ``(metadata, sources)`` tuples, where ``metadata`` is the effective
+    metadata to interpret and ``sources`` are the underlying attrs dicts to
+    mutate when clearing consumed attributes. Per the convention, group-level
+    (Dataset) properties apply to child arrays that don't define their own,
+    so array-level attrs take precedence over group-level attrs.
+    """
+    if isinstance(obj, xr.DataArray):
+        yield obj.attrs, (obj.attrs,)
+    else:
+        for var in obj.data_vars.values():
+            yield {**obj.attrs, **var.attrs}, (var.attrs, obj.attrs)
+        yield obj.attrs, (obj.attrs,)
+
+
+def guess_dims_from_spatial_zarr_convention(obj: xr.Dataset | xr.DataArray) -> tuple[str, str] | None:
+    """Guess the X and Y dimension names from Zarr ``spatial:`` convention metadata.
+
+    Looks for a ``spatial:dimensions`` attribute (array-level first, then
+    group-level). The convention does not assign meaning to the order of the
+    listed names, so we map them to axes using the array dimension order: the
+    affine transform maps ``(column, row) -> (x, y)`` and columns vary along
+    the trailing spatial dimension, so X is whichever of the two named
+    dimensions comes last in the array's dimension order.
+
+    Parameters
+    ----------
+    obj: xr.DataArray or xr.Dataset
+        The Xarray object to extract dimension names from.
+
+    Returns
+    -------
+    (x_dim, y_dim) or None
+        The detected dimension names, or None if the convention is not
+        registered or ``spatial:dimensions`` is absent.
+    """
+    for metadata, _ in _iter_spatial_zarr_metadata(obj):
+        dims = spatial_dims_from_zarr_convention(metadata)
+        if dims is None:
+            continue
+        arrays = (obj,) if isinstance(obj, xr.DataArray) else tuple(obj.data_vars.values())
+        for var in arrays:
+            if all(dim in var.dims for dim in dims):
+                y_dim, x_dim = sorted(dims, key=var.dims.index)
+                return x_dim, y_dim
+        raise ValueError(
+            f"spatial:dimensions names {dims!r} do not match the dimensions of any data variable."
+        )
     return None
 
 
@@ -74,7 +131,7 @@ def get_affine(
             del grid_mapping_var.attrs["GeoTransform"]
         return Affine.from_gdal(*map(float, transform.split(" ")))
 
-    # Check for STAC, GeoTIFF, or spatial zarr convention metadata in DataArray attrs
+    # Check for STAC or GeoTIFF metadata in DataArray attrs
     attrs = obj.attrs if isinstance(obj, xr.DataArray) else {}
 
     # Try to extract affine from STAC proj:transform
@@ -96,12 +153,14 @@ def get_affine(
 
         return affine
 
-    # Try to extract from spatial zarr convention attributes
-    if affine := affine_from_spatial_zarr_convention(attrs):
-        logger.trace("Creating affine from spatial zarr convention attributes")
-        if clear_transform:
-            del attrs["spatial:transform"]
-        return affine
+    # Try to extract from spatial zarr convention attributes (array-level first, then group-level)
+    for metadata, sources in _iter_spatial_zarr_metadata(obj):
+        if affine := affine_from_spatial_zarr_convention(metadata):
+            logger.trace("Creating affine from spatial zarr convention attributes")
+            if clear_transform:
+                for source in sources:
+                    source.pop("spatial:transform", None)
+            return affine
 
     # Fall back to computing from coordinate arrays
     logger.trace(f"Creating affine from coordinate arrays {x_dim=!r} and {y_dim=!r}")
