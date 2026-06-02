@@ -1,20 +1,19 @@
 from collections.abc import Iterator
-from typing import Any, NotRequired, TypedDict
+from typing import Any
 
 import xarray as xr
 from affine import Affine
 from pyproj import CRS
 
 from rasterix.lib import (
+    _has_proj_zarr_convention,
+    _ZarrProjMetadata,
     affine_from_spatial_zarr_convention,
     affine_from_stac_proj_metadata,
     affine_from_tiepoint_and_scale,
     logger,
     spatial_dims_from_zarr_convention,
 )
-
-# https://github.com/zarr-conventions/geo-proj
-_ZARR_GEO_PROJ_CONVENTION_UUID = "f17cb550-5864-4468-aeb7-f3180cfb622f"
 
 
 def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
@@ -188,31 +187,6 @@ def get_affine(
     return Affine.translation(
         x[0].item() - dx / 2, (y[0] if dy < 0 else y[-1]).item() - dy / 2
     ) * Affine.scale(dx, dy)
-
-
-_ZarrConventionRegistration = TypedDict("_ZarrConventionRegistration", {"proj:": str})
-
-_ZarrProjMetadata = TypedDict(
-    "_ZarrProjMetadata",
-    {
-        "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
-        "proj:code": NotRequired[str],
-        "proj:wkt2": NotRequired[str],
-        "proj:projjson": NotRequired[object],
-    },
-)
-
-
-def _has_proj_zarr_convention(metadata: _ZarrProjMetadata) -> bool:
-    zarr_conventions = metadata.get("zarr_conventions")
-    if not zarr_conventions:
-        return False
-    for entry in zarr_conventions:
-        if isinstance(entry, dict) and (
-            entry.get("uuid") == _ZARR_GEO_PROJ_CONVENTION_UUID or entry.get("name") == "proj:"
-        ):
-            return True
-    return False
 
 
 def get_crs_from_proj_zarr_convention(obj: xr.Dataset | xr.DataArray) -> CRS | None:

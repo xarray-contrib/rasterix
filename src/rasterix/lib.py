@@ -1,12 +1,16 @@
 """Shared library utilities for rasterix."""
 
 import logging
+from collections.abc import Mapping
 from typing import NotRequired, TypedDict
 
 from affine import Affine
 
 # https://github.com/zarr-conventions/spatial
 _ZARR_SPATIAL_CONVENTION_UUID = "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4"
+
+# https://github.com/zarr-conventions/geo-proj
+_ZARR_GEO_PROJ_CONVENTION_UUID = "f17cb550-5864-4468-aeb7-f3180cfb622f"
 
 
 # Define TRACE level (lower than DEBUG)
@@ -125,16 +129,34 @@ _ZarrSpatialMetadata = TypedDict(
 )
 
 
-def _has_spatial_zarr_convention(metadata: _ZarrSpatialMetadata) -> bool:
+_ZarrProjMetadata = TypedDict(
+    "_ZarrProjMetadata",
+    {
+        "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
+        "proj:code": NotRequired[str],
+        "proj:wkt2": NotRequired[str],
+        "proj:projjson": NotRequired[object],
+    },
+)
+
+
+def _has_zarr_convention(metadata: Mapping, *, uuid: str, name: str) -> bool:
+    """Check whether a Zarr convention is registered in the ``zarr_conventions`` attribute."""
     zarr_conventions = metadata.get("zarr_conventions")
     if not zarr_conventions:
         return False
     for entry in zarr_conventions:
-        if isinstance(entry, dict) and (
-            entry.get("uuid") == _ZARR_SPATIAL_CONVENTION_UUID or entry.get("name") == "spatial:"
-        ):
+        if isinstance(entry, dict) and (entry.get("uuid") == uuid or entry.get("name") == name):
             return True
     return False
+
+
+def _has_spatial_zarr_convention(metadata: _ZarrSpatialMetadata) -> bool:
+    return _has_zarr_convention(metadata, uuid=_ZARR_SPATIAL_CONVENTION_UUID, name="spatial:")
+
+
+def _has_proj_zarr_convention(metadata: _ZarrProjMetadata) -> bool:
+    return _has_zarr_convention(metadata, uuid=_ZARR_GEO_PROJ_CONVENTION_UUID, name="proj:")
 
 
 def affine_from_spatial_zarr_convention(metadata: dict) -> Affine | None:
