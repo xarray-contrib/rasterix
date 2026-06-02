@@ -676,16 +676,14 @@ def test_assign_index_with_spatial_zarr_convention_registration_not_implemented(
         assign_index(da)
 
 
-@pytest.mark.parametrize("dimensions", [["Y", "X"], ["X", "Y"]])
-def test_assign_index_with_spatial_zarr_convention_dimensions(dimensions):
-    # the order of spatial:dimensions is not significant;
-    # X is whichever dimension comes last in the array's dimension order
+def test_assign_index_with_spatial_zarr_convention_dimensions():
+    # spatial:dimensions is interpreted as [y, x], following the convention's examples
     da = xr.DataArray(
         np.ones((10, 12)),
         dims=("Y", "X"),
         attrs={
             "zarr_conventions": [{"name": "spatial:"}],
-            "spatial:dimensions": dimensions,
+            "spatial:dimensions": ["Y", "X"],
             "spatial:transform": [1.0, 0.0, 0.0, 0.0, -1.0, 10.0],
         },
     )
@@ -695,6 +693,7 @@ def test_assign_index_with_spatial_zarr_convention_dimensions(dimensions):
     assert isinstance(result.xindexes["X"], RasterIndex)
     assert isinstance(result.xindexes["Y"], RasterIndex)
     assert result.xindexes["X"].transform() == Affine(1.0, 0.0, 0.0, 0.0, -1.0, 10.0)
+    assert result.sizes == {"Y": 10, "X": 12}
 
 
 def test_assign_index_with_spatial_zarr_convention_dataset_group_attrs():

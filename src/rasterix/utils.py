@@ -12,7 +12,6 @@ from rasterix.lib import (
     affine_from_stac_proj_metadata,
     affine_from_tiepoint_and_scale,
     logger,
-    spatial_dims_from_zarr_convention,
 )
 
 
@@ -60,42 +59,6 @@ def _iter_spatial_zarr_metadata(
         for var in obj.data_vars.values():
             yield {**obj.attrs, **var.attrs}, (var.attrs, obj.attrs)
         yield obj.attrs, (obj.attrs,)
-
-
-def guess_dims_from_spatial_zarr_convention(obj: xr.Dataset | xr.DataArray) -> tuple[str, str] | None:
-    """Guess the X and Y dimension names from Zarr ``spatial:`` convention metadata.
-
-    Looks for a ``spatial:dimensions`` attribute (array-level first, then
-    group-level). The convention does not assign meaning to the order of the
-    listed names, so we map them to axes using the array dimension order: the
-    affine transform maps ``(column, row) -> (x, y)`` and columns vary along
-    the trailing spatial dimension, so X is whichever of the two named
-    dimensions comes last in the array's dimension order.
-
-    Parameters
-    ----------
-    obj: xr.DataArray or xr.Dataset
-        The Xarray object to extract dimension names from.
-
-    Returns
-    -------
-    (x_dim, y_dim) or None
-        The detected dimension names, or None if the convention is not
-        registered or ``spatial:dimensions`` is absent.
-    """
-    for metadata, _ in _iter_spatial_zarr_metadata(obj):
-        dims = spatial_dims_from_zarr_convention(metadata)
-        if dims is None:
-            continue
-        arrays = (obj,) if isinstance(obj, xr.DataArray) else tuple(obj.data_vars.values())
-        for var in arrays:
-            if all(dim in var.dims for dim in dims):
-                y_dim, x_dim = sorted(dims, key=var.dims.index)
-                return x_dim, y_dim
-        raise ValueError(
-            f"spatial:dimensions names {dims!r} do not match the dimensions of any data variable."
-        )
-    return None
 
 
 def get_affine(

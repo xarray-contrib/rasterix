@@ -22,7 +22,7 @@ For priority 1, the grid mapping variable is found following CF conventions:
 
 For priority 4, the convention must be registered in the `zarr_conventions` attribute (by name `spatial:` or by UUID); bare `spatial:` attributes are ignored otherwise. Attributes are looked up on the DataArray for DataArrays, and on each data variable then the Dataset itself for Datasets — array-level attributes take precedence over group-level ones, per the convention.
 
-If a `spatial:dimensions` attribute is present, it is also used to auto-detect the x/y dimension names when `x_dim`/`y_dim` are not passed to {py:func}`~rasterix.assign_index`. The order of the listed names is not significant: X is whichever named dimension comes last in the array's dimension order, since the transform maps `(column, row) -> (x, y)` and columns vary along the trailing spatial dimension.
+If a `spatial:dimensions` attribute is present, it is also used to auto-detect the x/y dimension names when `x_dim`/`y_dim` are not passed to {py:func}`~rasterix.assign_index`. The listed names are interpreted as `[y, x]`, following the convention's examples; `spatial:transform` uses standard [Affine](https://affine.readthedocs.io/en/latest/) coefficient ordering `[a, b, c, d, e, f]`, mapping `(column, row) -> (x, y)`.
 
 ## Coordinate array fallback
 

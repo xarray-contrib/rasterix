@@ -215,11 +215,10 @@ def spatial_dims_from_zarr_convention(metadata: dict) -> tuple[str, str] | None:
 
     Returns
     -------
-    tuple of str or None
-        The two spatial dimension names from ``spatial:dimensions``, in the order
-        they are listed, if present. The convention does not assign meaning to the
-        order; consumers must map names to axes themselves. None if the convention
-        is not registered or ``spatial:dimensions`` is absent.
+    (x_dim, y_dim) or None
+        Dimension names from ``spatial:dimensions``, interpreted as ``[y, x]``
+        following the convention's examples. None if the convention is not
+        registered or ``spatial:dimensions`` is absent.
     """
     possibly_spatial_metadata: _ZarrSpatialMetadata = metadata  # type: ignore[assignment]
 
@@ -227,7 +226,7 @@ def spatial_dims_from_zarr_convention(metadata: dict) -> tuple[str, str] | None:
         if dims := possibly_spatial_metadata.get("spatial:dimensions"):
             if len(dims) != 2:
                 raise ValueError(f"spatial:dimensions must have exactly 2 elements, got {len(dims)}")
-            first, second = dims
-            return str(first), str(second)
+            y_dim, x_dim = map(str, dims)
+            return x_dim, y_dim
 
     return None
