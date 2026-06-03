@@ -63,6 +63,25 @@ ds = rasterix.assign_index(ds)
 ds
 ```
 
+### Zarr spatial convention
+
+For data following the [Zarr Spatial Convention](https://zarr-specs.readthedocs.io/en/latest/v3/conventions/spatial/v1.0.html), `spatial:` attributes are detected on the variable (array-level) or the Dataset (group-level), with array-level attributes taking precedence. The convention must be registered in the `zarr_conventions` attribute. When present, `spatial:dimensions` is used to auto-detect the spatial dimension names, so non-standard names work without passing `x_dim`/`y_dim`; the CRS is detected from the companion [proj: convention](https://github.com/zarr-conventions/geo-proj) if present:
+
+```{code-cell}
+ds = xr.Dataset(
+    {"temperature": (("Y", "X"), np.random.rand(100, 100))},
+    attrs={
+        "zarr_conventions": [{"name": "spatial:"}, {"name": "proj:"}],
+        "spatial:dimensions": ["Y", "X"],
+        "spatial:transform": [10.0, 0.0, 400000.0, 0.0, -10.0, 5000000.0],
+        "proj:code": "EPSG:32610",
+    },
+)
+
+ds = rasterix.assign_index(ds)
+ds
+```
+
 ## Direct construction with class methods
 
 For more control, you can create a {py:class}`RasterIndex` directly using class methods. This is useful when you have the transform parameters available directly, or when working with data that doesn't have embedded metadata.

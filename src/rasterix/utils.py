@@ -1,18 +1,18 @@
-from typing import NotRequired, TypedDict
+from collections.abc import Iterator
+from typing import Any
 
 import xarray as xr
 from affine import Affine
 from pyproj import CRS
 
 from rasterix.lib import (
+    _has_proj_zarr_convention,
+    _ZarrProjMetadata,
     affine_from_spatial_zarr_convention,
     affine_from_stac_proj_metadata,
     affine_from_tiepoint_and_scale,
     logger,
 )
-
-# https://github.com/zarr-conventions/geo-proj
-_ZARR_GEO_PROJ_CONVENTION_UUID = "f17cb550-5864-4468-aeb7-f3180cfb622f"
 
 
 def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
@@ -40,6 +40,25 @@ def get_grid_mapping_var(obj: xr.Dataset | xr.DataArray) -> xr.DataArray | None:
     if grid_mapping_var is not None:
         return obj[grid_mapping_var]
     return None
+
+
+def _iter_spatial_zarr_metadata(
+    obj: xr.Dataset | xr.DataArray,
+) -> Iterator[tuple[dict[str, Any], tuple[dict[str, Any], ...]]]:
+    """Yield candidate metadata dicts for the Zarr ``spatial:`` convention.
+
+    Yields ``(metadata, sources)`` tuples, where ``metadata`` is the effective
+    metadata to interpret and ``sources`` are the underlying attrs dicts to
+    mutate when clearing consumed attributes. Per the convention, group-level
+    (Dataset) properties apply to child arrays that don't define their own,
+    so array-level attrs take precedence over group-level attrs.
+    """
+    if isinstance(obj, xr.DataArray):
+        yield obj.attrs, (obj.attrs,)
+    else:
+        for var in obj.data_vars.values():
+            yield {**obj.attrs, **var.attrs}, (var.attrs, obj.attrs)
+        yield obj.attrs, (obj.attrs,)
 
 
 def get_affine(
@@ -74,7 +93,7 @@ def get_affine(
             del grid_mapping_var.attrs["GeoTransform"]
         return Affine.from_gdal(*map(float, transform.split(" ")))
 
-    # Check for STAC, GeoTIFF, or spatial zarr convention metadata in DataArray attrs
+    # Check for STAC or GeoTIFF metadata in DataArray attrs
     attrs = obj.attrs if isinstance(obj, xr.DataArray) else {}
 
     # Try to extract affine from STAC proj:transform
@@ -96,12 +115,14 @@ def get_affine(
 
         return affine
 
-    # Try to extract from spatial zarr convention attributes
-    if affine := affine_from_spatial_zarr_convention(attrs):
-        logger.trace("Creating affine from spatial zarr convention attributes")
-        if clear_transform:
-            del attrs["spatial:transform"]
-        return affine
+    # Try to extract from spatial zarr convention attributes (array-level first, then group-level)
+    for metadata, sources in _iter_spatial_zarr_metadata(obj):
+        if affine := affine_from_spatial_zarr_convention(metadata):
+            logger.trace("Creating affine from spatial zarr convention attributes")
+            if clear_transform:
+                for source in sources:
+                    source.pop("spatial:transform", None)
+            return affine
 
     # Fall back to computing from coordinate arrays
     logger.trace(f"Creating affine from coordinate arrays {x_dim=!r} and {y_dim=!r}")
@@ -129,31 +150,6 @@ def get_affine(
     return Affine.translation(
         x[0].item() - dx / 2, (y[0] if dy < 0 else y[-1]).item() - dy / 2
     ) * Affine.scale(dx, dy)
-
-
-_ZarrConventionRegistration = TypedDict("_ZarrConventionRegistration", {"proj:": str})
-
-_ZarrProjMetadata = TypedDict(
-    "_ZarrProjMetadata",
-    {
-        "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
-        "proj:code": NotRequired[str],
-        "proj:wkt2": NotRequired[str],
-        "proj:projjson": NotRequired[object],
-    },
-)
-
-
-def _has_proj_zarr_convention(metadata: _ZarrProjMetadata) -> bool:
-    zarr_conventions = metadata.get("zarr_conventions")
-    if not zarr_conventions:
-        return False
-    for entry in zarr_conventions:
-        if isinstance(entry, dict) and (
-            entry.get("uuid") == _ZARR_GEO_PROJ_CONVENTION_UUID or entry.get("name") == "proj:"
-        ):
-            return True
-    return False
 
 
 def get_crs_from_proj_zarr_convention(obj: xr.Dataset | xr.DataArray) -> CRS | None:
