@@ -1,12 +1,16 @@
 """Shared library utilities for rasterix."""
 
 import logging
+from collections.abc import Mapping
 from typing import NotRequired, TypedDict
 
 from affine import Affine
 
 # https://github.com/zarr-conventions/spatial
 _ZARR_SPATIAL_CONVENTION_UUID = "689b58e2-cf7b-45e0-9fff-9cfc0883d6b4"
+
+# https://github.com/zarr-conventions/geo-proj
+_ZARR_GEO_PROJ_CONVENTION_UUID = "f17cb550-5864-4468-aeb7-f3180cfb622f"
 
 
 # Define TRACE level (lower than DEBUG)
@@ -117,6 +121,7 @@ _ZarrSpatialMetadata = TypedDict(
     "_ZarrSpatialMetadata",
     {
         "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
+        "spatial:dimensions": NotRequired[list[str]],
         "spatial:transform": NotRequired[list[float]],
         "spatial:transform_type": NotRequired[str],
         "spatial:registration": NotRequired[str],
@@ -124,16 +129,34 @@ _ZarrSpatialMetadata = TypedDict(
 )
 
 
-def _has_spatial_zarr_convention(metadata: _ZarrSpatialMetadata) -> bool:
+_ZarrProjMetadata = TypedDict(
+    "_ZarrProjMetadata",
+    {
+        "zarr_conventions": NotRequired[list[_ZarrConventionRegistration | dict]],
+        "proj:code": NotRequired[str],
+        "proj:wkt2": NotRequired[str],
+        "proj:projjson": NotRequired[object],
+    },
+)
+
+
+def _has_zarr_convention(metadata: Mapping, *, uuid: str, name: str) -> bool:
+    """Check whether a Zarr convention is registered in the ``zarr_conventions`` attribute."""
     zarr_conventions = metadata.get("zarr_conventions")
     if not zarr_conventions:
         return False
     for entry in zarr_conventions:
-        if isinstance(entry, dict) and (
-            entry.get("uuid") == _ZARR_SPATIAL_CONVENTION_UUID or entry.get("name") == "spatial:"
-        ):
+        if isinstance(entry, dict) and (entry.get("uuid") == uuid or entry.get("name") == name):
             return True
     return False
+
+
+def _has_spatial_zarr_convention(metadata: _ZarrSpatialMetadata) -> bool:
+    return _has_zarr_convention(metadata, uuid=_ZARR_SPATIAL_CONVENTION_UUID, name="spatial:")
+
+
+def _has_proj_zarr_convention(metadata: _ZarrProjMetadata) -> bool:
+    return _has_zarr_convention(metadata, uuid=_ZARR_GEO_PROJ_CONVENTION_UUID, name="proj:")
 
 
 def affine_from_spatial_zarr_convention(metadata: dict) -> Affine | None:
@@ -176,5 +199,34 @@ def affine_from_spatial_zarr_convention(metadata: dict) -> Affine | None:
                 )
 
             return Affine(*map(float, transform[:6]))
+
+    return None
+
+
+def spatial_dims_from_zarr_convention(metadata: dict) -> tuple[str, str] | None:
+    """Extract spatial dimension names from Zarr spatial convention metadata.
+
+    See https://github.com/zarr-conventions/spatial for the full specification.
+
+    Parameters
+    ----------
+    metadata : dict
+        Dictionary containing Zarr spatial convention metadata.
+
+    Returns
+    -------
+    (x_dim, y_dim) or None
+        Dimension names from ``spatial:dimensions``, interpreted as ``[y, x]``
+        following the convention's examples. None if the convention is not
+        registered or ``spatial:dimensions`` is absent.
+    """
+    possibly_spatial_metadata: _ZarrSpatialMetadata = metadata  # type: ignore[assignment]
+
+    if _has_spatial_zarr_convention(possibly_spatial_metadata):
+        if dims := possibly_spatial_metadata.get("spatial:dimensions"):
+            if len(dims) != 2:
+                raise ValueError(f"spatial:dimensions must have exactly 2 elements, got {len(dims)}")
+            y_dim, x_dim = map(str, dims)
+            return x_dim, y_dim
 
     return None

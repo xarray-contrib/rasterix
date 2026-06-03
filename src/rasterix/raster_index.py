@@ -19,10 +19,15 @@ from xarray.core.indexing import IndexSelResult, merge_sel_results
 from xarray.core.types import JoinOptions
 from xproj.typing import CRSAwareIndex
 
+from rasterix.lib import spatial_dims_from_zarr_convention
 from rasterix.odc_compat import BoundingBox, bbox_intersection, bbox_union, maybe_int, snap_grid
 from rasterix.options import get_options as get_rasterix_options
 from rasterix.rioxarray_compat import guess_dims
-from rasterix.utils import get_affine, get_crs_from_proj_zarr_convention
+from rasterix.utils import (
+    _iter_spatial_zarr_metadata,
+    get_affine,
+    get_crs_from_proj_zarr_convention,
+)
 
 T_Xarray = TypeVar("T_Xarray", "DataArray", "Dataset")
 
@@ -48,9 +53,13 @@ def assign_index(
     obj : xarray.DataArray or xarray.Dataset
         The object to assign the index to.
     x_dim : str, optional
-        Name of the x dimension. If None, will be automatically detected.
+        Name of the x dimension. If None, will be automatically detected from
+        Zarr ``spatial:dimensions`` convention metadata if present, else from
+        common dimension names and CF attributes.
     y_dim : str, optional
-        Name of the y dimension. If None, will be automatically detected.
+        Name of the y dimension. If None, will be automatically detected from
+        Zarr ``spatial:dimensions`` convention metadata if present, else from
+        common dimension names and CF attributes.
     crs: bool, optional
        Auto-detect CRS using xproj?
 
@@ -82,7 +91,15 @@ def assign_index(
     >>> indexed_da = assign_index(da)
     """
     if x_dim is None or y_dim is None:
-        guessed_x, guessed_y = guess_dims(obj)
+        guessed = None
+        for metadata, _ in _iter_spatial_zarr_metadata(obj):
+            if guessed := spatial_dims_from_zarr_convention(metadata):
+                if missing := set(guessed) - set(obj.dims):
+                    raise ValueError(f"spatial:dimensions names {missing!r} are not dimensions of obj.")
+                break
+        if guessed is None:
+            guessed = guess_dims(obj)
+        guessed_x, guessed_y = guessed
     x_dim = x_dim or guessed_x
     y_dim = y_dim or guessed_y
 

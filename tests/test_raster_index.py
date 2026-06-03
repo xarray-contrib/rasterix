@@ -676,6 +676,121 @@ def test_assign_index_with_spatial_zarr_convention_registration_not_implemented(
         assign_index(da)
 
 
+def test_assign_index_with_spatial_zarr_convention_dimensions():
+    # spatial:dimensions is interpreted as [y, x], following the convention's examples
+    da = xr.DataArray(
+        np.ones((10, 12)),
+        dims=("Y", "X"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:dimensions": ["Y", "X"],
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, -1.0, 10.0],
+        },
+    )
+
+    result = assign_index(da)
+
+    assert isinstance(result.xindexes["X"], RasterIndex)
+    assert isinstance(result.xindexes["Y"], RasterIndex)
+    assert result.xindexes["X"].transform() == Affine(1.0, 0.0, 0.0, 0.0, -1.0, 10.0)
+    assert result.sizes == {"Y": 10, "X": 12}
+
+
+def test_assign_index_with_spatial_zarr_convention_dataset_group_attrs():
+    ds = xr.Dataset(
+        {"data": (("Y", "X"), np.ones((10, 12)))},
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:dimensions": ["Y", "X"],
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, -1.0, 10.0],
+        },
+    )
+
+    result = assign_index(ds)
+
+    assert isinstance(result.xindexes["X"], RasterIndex)
+    assert isinstance(result.xindexes["Y"], RasterIndex)
+    assert result.xindexes["X"].transform() == Affine(1.0, 0.0, 0.0, 0.0, -1.0, 10.0)
+    assert "spatial:transform" not in result.attrs
+
+
+def test_assign_index_with_spatial_zarr_convention_variable_attrs():
+    ds = xr.Dataset(
+        {
+            "data": (
+                ("Y", "X"),
+                np.ones((10, 12)),
+                {
+                    "zarr_conventions": [{"name": "spatial:"}],
+                    "spatial:dimensions": ["Y", "X"],
+                    "spatial:transform": [1.0, 0.0, 0.0, 0.0, -1.0, 10.0],
+                },
+            )
+        }
+    )
+
+    result = assign_index(ds)
+
+    assert isinstance(result.xindexes["X"], RasterIndex)
+    assert isinstance(result.xindexes["Y"], RasterIndex)
+    assert result.xindexes["X"].transform() == Affine(1.0, 0.0, 0.0, 0.0, -1.0, 10.0)
+    assert "spatial:transform" not in result["data"].attrs
+
+
+def test_assign_index_with_spatial_zarr_convention_variable_attrs_group_registration():
+    # group-level registration applies to child arrays that don't define their own
+    ds = xr.Dataset(
+        {
+            "data": (
+                ("Y", "X"),
+                np.ones((10, 12)),
+                {
+                    "spatial:dimensions": ["Y", "X"],
+                    "spatial:transform": [1.0, 0.0, 0.0, 0.0, -1.0, 10.0],
+                },
+            )
+        },
+        attrs={"zarr_conventions": [{"name": "spatial:"}]},
+    )
+
+    result = assign_index(ds)
+
+    assert isinstance(result.xindexes["X"], RasterIndex)
+    assert isinstance(result.xindexes["Y"], RasterIndex)
+    assert result.xindexes["X"].transform() == Affine(1.0, 0.0, 0.0, 0.0, -1.0, 10.0)
+    assert "spatial:transform" not in result["data"].attrs
+
+
+def test_assign_index_with_spatial_zarr_convention_unregistered_ignored():
+    # without the zarr_conventions registration, spatial: attrs are ignored
+    ds = xr.Dataset(
+        {"data": (("Y", "X"), np.ones((10, 12)))},
+        attrs={
+            "spatial:dimensions": ["Y", "X"],
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, -1.0, 10.0],
+        },
+    )
+
+    with pytest.raises(ValueError, match="do not have explicit coordinate values"):
+        # spatial:transform is ignored, so this falls through to the coordinate fallback
+        assign_index(ds, x_dim="X", y_dim="Y")
+
+
+def test_assign_index_with_spatial_zarr_convention_dimensions_mismatch():
+    da = xr.DataArray(
+        np.ones((10, 12)),
+        dims=("Y", "X"),
+        attrs={
+            "zarr_conventions": [{"name": "spatial:"}],
+            "spatial:dimensions": ["lat", "lon"],
+            "spatial:transform": [1.0, 0.0, 0.0, 0.0, -1.0, 10.0],
+        },
+    )
+
+    with pytest.raises(ValueError, match="spatial:dimensions"):
+        assign_index(da)
+
+
 def test_assign_index_no_coords_no_metadata():
     """Test that assign_index raises error when coords are missing and no transform metadata."""
     da = xr.DataArray(np.ones((10, 10)), dims=("y", "x"))
