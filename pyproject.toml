@@ -38,16 +38,14 @@ dynamic=["version"]
 [project.optional-dependencies]
 dask = ["dask-geopandas"]
 rasterize = ["rasterio"]
-# rusterize >=0.8 no longer depends on polars, but needs it for GeoDataFrame input
-rusterize = ["rusterize>=0.7.1", "polars"]
+rusterize = ["rusterize>=0.8.1"]
 exactextract = ["exactextract", "sparse"]
 docs = [
   "geodatasets",
   "pooch",
   "dask-geopandas",
   "rasterio",
-  "rusterize>=0.7.1",
-  "polars",  # needed by rusterize for GeoDataFrame input
+  "rusterize>=0.8.1",
   "rioxarray",
   "exactextract",
   "sparse",

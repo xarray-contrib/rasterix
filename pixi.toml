@@ -46,12 +46,8 @@ pytest-xdist = "*"
 [feature.with-rasterio.dependencies]
 rasterio = "*"
 
-[feature.with-rusterize.dependencies]
-# rusterize >=0.8 no longer depends on polars, but needs it for GeoDataFrame input
-polars = "*"
-
 [feature.with-rusterize.pypi-dependencies]
-rusterize = ">=0.7.1"
+rusterize = ">=0.8.1"
 
 # ===== Docs feature =====
 
@@ -80,7 +76,7 @@ xvec = "*"
 polars = "*"
 
 [feature.docs.pypi-dependencies]
-rusterize = ">=0.7.1"
+rusterize = ">=0.8.1"
 
 [feature.docs.tasks]
 docs-build = { cmd = "sphinx-build -b html . _build/html", cwd = "docs" }
