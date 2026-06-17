@@ -180,7 +180,7 @@ def rasterize(
     all_touched : bool
         If True, all pixels touched by geometries will be burned in.
         If False, only pixels whose center is within the geometry are burned.
-        Note: Not supported by rusterize or exactextract engines.
+        Note: Not supported by the exactextract engine.
     merge_alg : str
         Merge algorithm when geometries overlap.
         - "replace": later geometries overwrite earlier ones
@@ -211,6 +211,7 @@ def rasterize(
       Requires GDAL.
 
     - **rusterize**: A Rust-based rasterization engine. Does not require GDAL.
+      Same ``all_touched`` logic as rasterio.
 
     - **exactextract**: Uses the exactextract library for precise sub-pixel
       coverage computation. Any pixel with non-zero coverage is burned, which

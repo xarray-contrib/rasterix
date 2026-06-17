@@ -4,7 +4,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-import geopandas as gpd
 import numpy as np
 from affine import Affine
 from shapely import Geometry
@@ -79,24 +78,18 @@ def rasterize_geometries(
     """
     from rusterize import rusterize
 
-    # Create GeoDataFrame with index values
-    # Dummy CRS required by rusterize but not used by the algorithm
-    # https://github.com/ttrotto/rusterize/issues/10
-    values = list(range(offset, offset + len(geometries)))
-    gdf = gpd.GeoDataFrame({"value": values}, geometry=list(geometries), crs="EPSG:4326")
-
     extent, (xres, yres) = _affine_to_extent_and_res(affine, shape)
 
     result = rusterize(
-        gdf,
+        list(geometries),
         res=(xres, yres),
         extent=extent,
         out_shape=shape,
-        field="value",
         fun=merge_alg,
         background=fill,
         all_touched=all_touched,
         encoding="numpy",
+        burn=np.arange(offset, offset + len(geometries), dtype=dtype),
         dtype=str(dtype),
     )
 
@@ -174,15 +167,10 @@ def np_geometry_mask(
     """
     from rusterize import rusterize
 
-    # Create GeoDataFrame with burn value
-    # Dummy CRS required by rusterize but not used by the algorithm
-    # https://github.com/ttrotto/rusterize/issues/10
-    gdf = gpd.GeoDataFrame(geometry=list(geometries), crs="EPSG:4326")
-
     extent, (xres, yres) = _affine_to_extent_and_res(affine, shape)
 
     result = rusterize(
-        gdf,
+        list(geometries),
         res=(xres, yres),
         extent=extent,
         out_shape=shape,

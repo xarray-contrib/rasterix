@@ -57,15 +57,15 @@ Three rasterization engines are available for the functions above:
 | Engine           | GDAL Required | `all_touched` | Notes                          |
 | ---------------- | ------------- | ------------- | ------------------------------ |
 | **rasterio**     | Yes           | Yes           | Most compatible, requires GDAL |
-| **rusterize**    | No            | No            | Fast, easy to install, no GDAL |
+| **rusterize**    | No            | Yes           | Fast, easy to install, no GDAL |
 | **exactextract** | No            | No\*          | Sub-pixel precision, no GDAL   |
 
 \* exactextract naturally includes any pixel with non-zero coverage, similar to `all_touched=True`
 
 ### Choosing an Engine
 
-- **rasterio**: Best when you need `all_touched=True` or already have GDAL installed
-- **rusterize**: Best for simple rasterization without GDAL dependency (default when available)
+- **rasterio**: Best when you already have a GDAL-based pipeline
+- **rusterize**: Best for all-around rasterization without GDAL dependency (default when available)
 - **exactextract**: Best when you need sub-pixel precision without GDAL
 
 ```python

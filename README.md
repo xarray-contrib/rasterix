@@ -11,7 +11,7 @@ This project contains tools to make it easier to analyze raster data with Xarray
 It currently has two pieces.
 
 1. `RasterIndex` for indexing using the affine transform recorded in GeoTIFFs.
-1. Dask-aware rasterization wrappers around `exactextract`, `rasterio.features.rasterize`, and `rasterio.features.geometry_mask`.
+1. Dask-aware rasterization wrappers around `exactextract`, `rasterio.features.rasterize`, `rusterize.rusterize`, and `rasterio.features.geometry_mask`.
 
 Our intent is to provide reusable building blocks for the many sub-ecosystems around: e.g. `rioxarray`, `odc.geo`, etc.
 
