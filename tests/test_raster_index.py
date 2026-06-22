@@ -1059,3 +1059,26 @@ def test_tolerance_in_concat():
 
     with set_options(transform_rtol=1e-9):
         _assert_transforms_are_compatible(a1, a2)  # passes with 1e-9
+
+
+def test_get_affine_preserves_ascending_y():
+    nx, ny = 4, 3
+    lon = np.array([-179.5, -89.5, 0.5, 89.5])      # ascending
+    lat_asc  = np.array([-60.0, 0.0, 60.0])          # ascending
+    lat_desc = lat_asc[::-1]                          # descending
+    
+    ds_asc  = xr.Dataset(
+        {"foo": (("lat", "lon"), np.zeros((ny, nx)))},
+        coords={"lat": lat_asc, "lon": lon},
+    )
+    ds_desc = xr.Dataset(
+        {"foo": (("lat", "lon"), np.zeros((ny, nx)))},
+        coords={"lat": lat_desc, "lon": lon},
+    )
+    
+    out_asc  = assign_index(ds_asc,  x_dim="lon", y_dim="lat")
+    out_desc = assign_index(ds_desc, x_dim="lon", y_dim="lat")
+    
+    # The materialized coords should round-trip the input direction
+    np.testing.assert_allclose(out_asc.lat.values,  lat_asc)
+    np.testing.assert_allclose(out_desc.lat.values, lat_desc)

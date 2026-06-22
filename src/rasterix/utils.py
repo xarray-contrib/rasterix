@@ -148,8 +148,9 @@ def get_affine(
     dx = (x[1] - x[0]).item()
     dy = (y[1] - y[0]).item()
     return Affine.translation(
-        x[0].item() - dx / 2, (y[0] if dy < 0 else y[-1]).item() - dy / 2
-    ) * Affine.scale(dx, dy)
+    x[0].item() - dx/2,
+    y[0].item() - dy/2
+) * Affine.scale(dx, dy)
 
 
 def get_crs_from_proj_zarr_convention(obj: xr.Dataset | xr.DataArray) -> CRS | None:
