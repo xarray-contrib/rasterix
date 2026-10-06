@@ -78,11 +78,11 @@ def rasterize_geometries(
     """
     from rusterize import rusterize
 
-    extent, (xres, yres) = _affine_to_extent_and_res(affine, shape)
+    # rusterize>=0.9 rejects `res` together with `out_shape`; extent + shape define the grid
+    extent, _ = _affine_to_extent_and_res(affine, shape)
 
     result = rusterize(
         list(geometries),
-        res=(xres, yres),
         extent=extent,
         out_shape=shape,
         fun=merge_alg,
@@ -167,11 +167,11 @@ def np_geometry_mask(
     """
     from rusterize import rusterize
 
-    extent, (xres, yres) = _affine_to_extent_and_res(affine, shape)
+    # rusterize>=0.9 rejects `res` together with `out_shape`; extent + shape define the grid
+    extent, _ = _affine_to_extent_and_res(affine, shape)
 
     result = rusterize(
         list(geometries),
-        res=(xres, yres),
         extent=extent,
         out_shape=shape,
         burn=1,
