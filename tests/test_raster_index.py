@@ -471,6 +471,9 @@ def test_repr_inline() -> None:
     expected = "RasterIndex (crs=EPSG:31370)"
     assert actual == expected
 
+    index3 = RasterIndex.from_transform(Affine(30, 0, -180, 0, -30, 90), width=12, height=2, x_period=360)
+    assert index3._repr_inline_(70) == "RasterIndex (crs=None, x_period=360)"
+
 
 def test_repr() -> None:
     index1 = RasterIndex.from_transform(Affine.identity(), width=12, height=10)

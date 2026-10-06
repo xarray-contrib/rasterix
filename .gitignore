@@ -53,6 +53,7 @@ coverage.xml
 docs/_build/
 docs/api
 docs/autoapi
+docs/superpowers/
 /data
 /data.zip
 

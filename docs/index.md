@@ -10,6 +10,7 @@ hidden:
 raster_index/intro
 raster_index/creating
 raster_index/indexing
+raster_index/periodic
 raster_index/crs
 raster_index/aligning
 raster_index/combining

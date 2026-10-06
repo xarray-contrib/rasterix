@@ -84,6 +84,42 @@ And... concatenate! 🪄
 xr.concat(dsets, dim="x")
 ```
 
+(concat-periodic)=
+
+### Periodic axes
+
+Concatenation along a periodic axis is supported (see {doc}`periodic`).
+The offsets of the concatenated datasets can then differ by a multiple of the period.
+{py:class}`RasterIndex` moves each piece by that multiple, so the result is contiguous
+and its coordinates are _unwrapped_.
+
+```{code-cell}
+raw = xr.Dataset(
+    {"foo": (("y", "x"), np.ones((2, 12)), {"grid_mapping": "spatial_ref"})},
+    coords={
+        "spatial_ref": (
+            (),
+            0,
+            pyproj.CRS.from_epsg(4326).to_cf() | {"GeoTransform": "-180 30 0 90 0 -90"},
+        )
+    },
+)
+# copy: assign_index removes GeoTransform from its input
+global_ds = rasterix.assign_index(raw.copy(), x_period=360)
+tail, head = global_ds.isel(x=slice(-2, None)), global_ds.isel(x=slice(0, 2))
+xr.concat([tail, head], dim="x")
+```
+
+Without a period, the same concatenation raises an error:
+
+```{code-cell}
+---
+tags: [raises-exception]
+---
+no_period = rasterix.assign_index(raw)
+xr.concat([no_period.isel(x=slice(-2, None)), no_period.isel(x=slice(0, 2))], dim="x")
+```
+
 <!-- Concatenation is supported both for increasing and decreasing y-axis coordinates -->
 
 <!-- ```{code-cell} -->

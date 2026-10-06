@@ -16,3 +16,13 @@
 .gp {
   color: darkorange;
 }
+
+/* igor has a white background; tint code blocks in light mode (dark rules are more specific) */
+.highlight {
+  background: var(--color-background-secondary);
+}
+
+/* Wrap long error messages, don't scroll */
+.output.traceback pre {
+  white-space: pre-wrap;
+}

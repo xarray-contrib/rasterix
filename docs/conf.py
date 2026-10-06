@@ -54,6 +54,8 @@ autoapi_add_toctree_entry = False
 
 autodoc_typehints = "none"
 codeautolink_concat_default = True
+# Names that hidden/removed cells or other pages import; lets every block autolink
+codeautolink_global_preface = "import numpy as np\nimport rasterix\nimport xarray as xr"
 
 extlinks = {
     "issue": ("https://github.com/xarray-contrib/rasterix/issues/%s", "GH#%s"),
@@ -78,6 +80,8 @@ copyright = f"2025-{current_year}, rasterix contributors"
 author = "Rasterix Contributors"
 
 # Myst_nb options
+# Kernels read docs/_ipython/profile_default config: sets %xmode minimal on all pages
+os.environ["IPYTHONDIR"] = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_ipython")
 nb_execution_excludepatterns = []
 nb_execution_raise_on_error = True
 nb_execution_mode = "cache"

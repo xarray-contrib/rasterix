@@ -8,6 +8,8 @@ from typing import Any
 OPTIONS: dict[str, Any] = {
     "transform_rtol": 1e-12,
     "transform_atol": 0.0,
+    "period_rtol": 0.0,
+    "period_atol": 1e-3,
 }
 
 
@@ -19,6 +21,8 @@ def _validate_tolerance(value: Any) -> bool:
 _VALIDATORS = {
     "transform_rtol": _validate_tolerance,
     "transform_atol": _validate_tolerance,
+    "period_rtol": _validate_tolerance,
+    "period_atol": _validate_tolerance,
 }
 
 
@@ -35,6 +39,11 @@ def set_options(**kwargs):
         handles typical floating-point representation noise.
     transform_atol : float, default: 0.0
         Absolute tolerance for comparing affine transform parameters.
+    period_rtol : float, default: 0.0
+        Relative tolerance for checking that ``period / |dx|`` is an integer number of cells.
+    period_atol : float, default: 1e-3
+        Absolute tolerance, in cells, for checking that ``period / |dx|`` is an integer.
+        GeoTransform ``dx`` often has ~1e-12 relative round-off.
 
     Examples
     --------
