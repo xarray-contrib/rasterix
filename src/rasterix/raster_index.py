@@ -121,10 +121,18 @@ def assign_index(
     return obj.assign_coords(coords)
 
 
-def _isclose(a: float, b: float) -> bool:
-    """Check if two floats are close using rasterix tolerance options."""
+def _isclose(a: float, b: float, *, rtol: float | None = None, atol: float | None = None) -> bool:
+    """Check if two floats are close; tolerances default to the rasterix transform options."""
     opts = get_rasterix_options()
-    return math.isclose(a, b, rel_tol=opts["transform_rtol"], abs_tol=opts["transform_atol"])
+    rtol = opts["transform_rtol"] if rtol is None else rtol
+    atol = opts["transform_atol"] if atol is None else atol
+    return math.isclose(a, b, rel_tol=rtol, abs_tol=atol)
+
+
+def _axis_tol(pixel: float, *values: float) -> float:
+    """Absolute tolerance for one axis: round-off scales with |coordinate| and pixel size, not with a bound near 0."""
+    opts = get_rasterix_options()
+    return max(opts["transform_atol"], opts["transform_rtol"] * max(abs(pixel), *(abs(v) for v in values)))
 
 
 def _assert_transforms_are_compatible(*affines) -> None:
@@ -1009,10 +1017,24 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
     def _new_with_bbox(self, bbox: BoundingBox) -> RasterIndex:
         affine = self.transform()
         new_affine, Nx, Ny = bbox_to_affine(bbox, affine)
-        # TODO: set xdim, ydim explicitly
-        new_index = self.from_transform(new_affine, width=Nx, height=Ny)
-        opts = get_rasterix_options()
-        assert new_index.bbox.isclose(bbox, rtol=opts["transform_rtol"], atol=opts["transform_atol"])
+        x_dim, y_dim = self._xy_dims
+        x_coord_name, y_coord_name = self._xy_coord_names
+        new_index = self.from_transform(
+            new_affine,
+            width=Nx,
+            height=Ny,
+            x_dim=x_dim,
+            y_dim=y_dim,
+            x_coord_name=str(x_coord_name),
+            y_coord_name=str(y_coord_name),
+            crs=self._crs,
+        )
+        # snap_grid round-off is ~ulp(coordinate): use a tolerance scaled by pixel size and extent
+        tx = _axis_tol(affine.a, bbox.left, bbox.right)
+        ty = _axis_tol(affine.e, bbox.bottom, bbox.top)
+        assert all(
+            _isclose(new, old, atol=tol) for new, old, tol in zip(new_index.bbox, bbox, (tx, ty, tx, ty))
+        )
         return new_index
 
     def join(self, other: RasterIndex, how: JoinOptions = "inner") -> RasterIndex:
@@ -1141,25 +1163,34 @@ def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> 
     off_x = tuple(t.c for t in transforms)
     off_y = tuple(t.f for t in transforms)
 
+    tol_x = _axis_tol(
+        transforms[0].a, *off_x, *(o + i.xy_shape[XAXIS] * transforms[0].a for o, i in zip(off_x, indexes))
+    )
+    tol_y = _axis_tol(
+        transforms[0].e, *off_y, *(o + i.xy_shape[YAXIS] * transforms[0].e for o, i in zip(off_y, indexes))
+    )
+
     if concat_dim is not None:
-        if all(_isclose(o, off_x[0]) for o in off_x[1:]) and all(_isclose(o, off_y[0]) for o in off_y[1:]):
+        if all(_isclose(o, off_x[0], atol=tol_x) for o in off_x[1:]) and all(
+            _isclose(o, off_y[0], atol=tol_y) for o in off_y[1:]
+        ):
             raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
 
     # note: Xarray alignment already ensures that the indexes dimensions are compatible.
     x_dim, y_dim = indexes[0].xy_dims
 
     if concat_dim == x_dim:
-        if any(not _isclose(off_y[0], o) for o in off_y[1:]):
+        if any(not _isclose(off_y[0], o, atol=tol_y) for o in off_y[1:]):
             raise ValueError("offsets must be identical in Y when concatenating along X")
-        if any(not _isclose(a, b) for a, b in zip(off_x, expected_off_x)):
+        if any(not _isclose(a, b, atol=tol_x) for a, b in zip(off_x, expected_off_x)):
             raise ValueError(
                 f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
             )
     elif concat_dim == y_dim:
-        if any(not _isclose(off_x[0], o) for o in off_x[1:]):
+        if any(not _isclose(off_x[0], o, atol=tol_x) for o in off_x[1:]):
             raise ValueError("offsets must be identical in X when concatenating along Y")
 
-        if any(not _isclose(a, b) for a, b in zip(off_y, expected_off_y)):
+        if any(not _isclose(a, b, atol=tol_y) for a, b in zip(off_y, expected_off_y)):
             raise ValueError(
                 f"Y offsets are incompatible. Provided offsets {off_y}, expected offsets: {expected_off_y}"
             )
