@@ -40,7 +40,13 @@ YAXIS = 1
 
 
 def assign_index(
-    obj: T_Xarray, *, x_dim: str | None = None, y_dim: str | None = None, crs: bool = True
+    obj: T_Xarray,
+    *,
+    x_dim: str | None = None,
+    y_dim: str | None = None,
+    crs: bool = True,
+    x_period: float | None = None,
+    y_period: float | None = None,
 ) -> T_Xarray:
     """Assign a RasterIndex to an Xarray DataArray or Dataset.
 
@@ -62,6 +68,9 @@ def assign_index(
         common dimension names and CF attributes.
     crs: bool, optional
        Auto-detect CRS using xproj?
+    x_period, y_period : float, optional
+        Period of the x / y axis in coordinate units, e.g. ``x_period=360`` for a global
+        longitude axis. Not inferred from the CRS. See :py:meth:`RasterIndex.from_transform`.
 
     Returns
     -------
@@ -116,6 +125,8 @@ def assign_index(
         x_dim=x_dim,
         y_dim=y_dim,
         crs=detected_crs,
+        x_period=x_period,
+        y_period=y_period,
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
@@ -144,6 +155,58 @@ def _assert_transforms_are_compatible(*affines) -> None:
             raise ValueError(
                 f"Transform parameters are not compatible for affine 0: {A1}, and affine {index + 1} {A2}"
             )
+
+
+def _period_cells(period: float, scale: float) -> int:
+    """Number of cells in one period; raise if it is not an integer."""
+    if period <= 0:
+        raise ValueError(f"period must be positive, got {period!r}.")
+    ncells = period / abs(scale)
+    rounded = round(ncells)
+    opts = get_rasterix_options()
+    if rounded < 1 or not _isclose(ncells, rounded, rtol=opts["period_rtol"], atol=opts["period_atol"]):
+        raise ValueError(
+            f"period={period!r} is not an integer number of cells (period / |dx| = {ncells!r}). "
+            f"If this is round-off in dx, loosen the tolerance with "
+            f"rasterix.set_options(period_atol=...) (now {opts['period_atol']!r} cells)."
+        )
+    return rounded
+
+
+def _assert_periods_equal(*indexes: RasterIndex) -> None:
+    periods = {idx._periods() for idx in indexes}
+    if len(periods) > 1:
+        raise ValueError(f"Cannot combine RasterIndexes with different periods: {sorted(map(str, periods))}")
+
+
+def _assert_same_frame(ours: BoundingBox, theirs: BoundingBox, index: RasterIndex) -> None:
+    """Raise if the two extents share cells only at labels shifted by a multiple of the period.
+
+    Alignment compares labels exactly, so such a pair would drop or duplicate those cells.
+    """
+    affine = index.transform()
+    x_dim, y_dim = index.xy_dims
+    axes = [
+        (x_dim, index.x_period, (ours.left, ours.right), (theirs.left, theirs.right), affine.a),
+        (y_dim, index.y_period, (ours.bottom, ours.top), (theirs.bottom, theirs.top), affine.e),
+    ]
+    for dim, period, (a0, a1), (b0, b1), scale in axes:
+        if period is None:
+            continue
+        a0, a1 = sorted((a0, a1))
+        b0, b1 = sorted((b0, b1))
+        # any overlap beyond half a cell at a nonzero shift k * period
+        for k in range(math.floor((a0 - b1) / period), math.ceil((a1 - b0) / period) + 1):
+            if k == 0:
+                continue
+            overlap = min(a1, b1 + k * period) - max(a0, b0 + k * period)
+            if overlap > abs(scale) / 2:
+                raise ValueError(
+                    f"Cannot align RasterIndexes on periodic dimension {dim!r}: they share cells at labels "
+                    f"that differ by {-k * period:g} ({-k} period(s) of {period:g}). Alignment compares labels "
+                    "exactly, so these cells would be dropped or duplicated. "
+                    "Select both objects in the same frame first."
+                )
 
 
 class AffineTransform(CoordinateTransform):
@@ -210,6 +273,8 @@ class AxisAffineTransform(CoordinateTransform):
     coord_name: Hashable
     dim: str
     size: int
+    period: float | None
+    period_cells: int | None
 
     def __init__(
         self,
@@ -219,6 +284,7 @@ class AxisAffineTransform(CoordinateTransform):
         dim: str,
         is_xaxis: bool,
         dtype: Any = np.dtype(np.float64),
+        period: float | None = None,
     ):
         assert affine.is_rectilinear and (affine.b == affine.d == 0)
 
@@ -228,6 +294,12 @@ class AxisAffineTransform(CoordinateTransform):
         self.coord_name = coord_name
         self.dim = dim
         self.size = size
+        self.period = period
+        self.period_cells = None if period is None else _period_cells(period, self.scale)
+
+    @property
+    def scale(self) -> float:
+        return self.affine.a if self.is_xaxis else self.affine.e
 
     def forward(self, dim_positions: dict[str, Any]) -> dict[Hashable, Any]:
         positions = np.asarray(dim_positions[self.dim])
@@ -239,14 +311,95 @@ class AxisAffineTransform(CoordinateTransform):
 
         return {self.coord_name: labels}
 
-    def reverse(self, coord_labels: dict[Hashable, Any]) -> dict[str, Any]:
-        labels = np.asarray(coord_labels[self.coord_name])
-
+    def _positions(self, labels: Any) -> np.ndarray:
+        """Unwrapped (float) cell positions of ``labels``."""
+        labels = np.asarray(labels)
         if self.is_xaxis:
             positions, _ = ~self.affine * (labels, np.zeros_like(labels))
         else:
             _, positions = ~self.affine * (np.zeros_like(labels), labels)
+        return positions
 
+    def _wrap(self, positions: np.ndarray) -> np.ndarray:
+        """Exact position wins; else wrap into [-0.5, P - 0.5) so that rounding gives [0, P)."""
+        assert self.period_cells is not None
+        positions = np.asarray(positions, dtype=np.float64)
+        rounded = np.round(positions)
+        inside = (rounded >= 0) & (rounded < self.size)
+        wrapped = np.mod(positions + 0.5, self.period_cells) - 0.5
+        return np.where(inside, positions, wrapped)
+
+    def periodic_slice_indexer(self, labels: slice) -> slice | np.ndarray:
+        """Positions for the label slice ``labels`` on a periodic axis; both ends included.
+
+        ``P`` is the number of cells in one period. ``size`` is the number of cells in this
+        axis (``size == P`` for a global axis, ``size < P`` for a subset).
+
+        1. Convert both labels to cell positions ``start`` and ``stop``. These positions are
+           not wrapped: a label left of the extent gives a negative position, and a label
+           right of the extent gives a position ``>= size``.
+        2. If ``[start, stop]`` contains all cells of the axis, return all cells in their
+           current order. We do not modify the data in any way: e.g. we do not roll the data
+           to start at ``start``.
+        3. Compute the number of cells ``n = stop - start + 1`` and limit it to one period.
+           If ``stop < start``, the slice goes across the seam (e.g. ``slice(150, -150)``),
+           so ``n`` is the number of cells from ``start`` forward to ``stop`` around the
+           period: ``n = (n - 1) % P + 1``.
+        4. Global axis:
+
+           - ``start < 0``: the slice starts left of the extent (e.g. ``slice(-190, -170)``
+             on ``[-180, 180)``). Return ``start + arange(n)`` with negative positions.
+             Negative positions index from the end of the array, and ``_periodic_run``
+             reads them as one period to the left, so the result keeps the requested
+             labels (−189.5 … −169.5).
+           - Else wrap ``start`` into ``[0, P)``. If the run ends before the seam, return a
+             slice. Else return ``(start + arange(n)) % P``, e.g. ``[358, 359, 0, 1]``;
+             ``_periodic_run`` makes it one run with unwrapped labels.
+        5. Subset: wrap ``start`` into ``[0, P)`` only if it is outside the extent. The
+           run ``(start + arange(n)) % P`` can contain cells that are not in the subset;
+           remove them.
+
+        Return a slice if the positions are contiguous, else an integer array.
+        """
+        assert self.period_cells is not None
+        P, size = self.period_cells, self.size
+        # np.round rounds to even, this way we round upwards (same as the non-periodic path)
+        bounds = np.floor(self._positions(np.array([labels.start, labels.stop], dtype=np.float64)) + 0.5)
+        start, stop = int(bounds[0]), int(bounds[1])
+        if start <= 0 and stop >= size - 1:
+            # The slice contains the full extent. Do not roll.
+            return slice(0, size)
+        n = stop - start + 1
+        # stop < start: the slice goes across the seam
+        n = min(n, P) if n > 0 else (n - 1) % P + 1
+
+        if size == P:
+            if start < 0:
+                # Keep the requested frame left of the extent. Negative positions index from the end;
+                # _periodic_run reads them as one period to the left.
+                start = start % P - P if start % P else 0
+                return start + np.arange(n)
+            start %= P
+            if start + n <= P:
+                return slice(start, start + n)
+            # The run goes across the seam. _periodic_run makes it one unwrapped run.
+            return (start + np.arange(n)) % P
+
+        # Subset of one period. Wrap a start outside the extent, then keep only the cells in the extent.
+        if not 0 <= start < size:
+            start %= P
+        positions = (start + np.arange(n)) % P
+        positions = positions[positions < size]
+        if positions.size == 0:
+            return slice(0, 0)
+        if np.all(np.diff(positions) == 1):
+            return slice(int(positions[0]), int(positions[-1]) + 1)
+        return positions
+
+    def reverse(self, coord_labels: dict[Hashable, Any]) -> dict[str, Any]:
+        positions = self._positions(coord_labels[self.coord_name])
+        if self.period_cells is not None:
+            positions = self._wrap(positions)
         return {self.dim: positions}
 
     def equals(self, other: CoordinateTransform, *, exclude: frozenset[Hashable] | None = None) -> bool:
@@ -261,23 +414,25 @@ class AxisAffineTransform(CoordinateTransform):
         else:
             affine_match = _isclose(self.affine.e, other.affine.e) and _isclose(self.affine.f, other.affine.f)
 
-        return affine_match and self.size == other.size
+        return affine_match and self.size == other.size and self.period == other.period
 
     def generate_coords(self, dims: tuple[str, ...] | None = None) -> dict[Hashable, Any]:
         assert dims is None or dims == self.dims
         return self.forward({self.dim: np.arange(self.size)})
 
-    def slice(self, slice: slice) -> AxisAffineTransform:
-        newrange = range(self.size)[slice]
-        start = newrange.start
-        step = newrange.step or 1
-        size = len(newrange)
+    def run(self, start: int, size: int, step: int = 1) -> AxisAffineTransform:
+        """Transform for positions ``start + step * arange(size)``; may extend past ``self.size``."""
         scale = float(step)
 
         if self.is_xaxis:
             affine = self.affine * Affine.translation(start, 0.0) * Affine.scale(scale, 1.0)
         else:
             affine = self.affine * Affine.translation(0.0, start) * Affine.scale(1.0, scale)
+
+        period = self.period
+        if self.period_cells is not None and self.period_cells % abs(step) != 0:
+            # strided subset is not periodic on its own grid
+            period = None
 
         return type(self)(
             affine,
@@ -286,11 +441,19 @@ class AxisAffineTransform(CoordinateTransform):
             self.dim,
             is_xaxis=self.is_xaxis,
             dtype=self.dtype,
+            period=period,
         )
+
+    def slice(self, slice: slice) -> AxisAffineTransform:
+        newrange = range(self.size)[slice]
+        return self.run(newrange.start, len(newrange), newrange.step or 1)
 
     def __repr__(self) -> str:
         params = ", ".join(f"{pn}={getattr(self.affine, pn):.4g}" for pn in "abcdef")
-        return f"{type(self).__name__}({params}, axis={'X' if self.is_xaxis else 'Y'}, dim={self.dim!r})"
+        period = "" if self.period is None else f", period={self.period:.4g}"
+        return (
+            f"{type(self).__name__}({params}, axis={'X' if self.is_xaxis else 'Y'}, dim={self.dim!r}{period})"
+        )
 
 
 class AxisAffineTransformIndex(CoordinateTransformIndex):
@@ -319,6 +482,37 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
         self.axis_transform = transform
         self.dim = transform.dim
 
+    def _periodic_run(self, idxer: Any) -> tuple[int, int, int] | None:
+        """``(start, size, step)`` if ``idxer`` is one run ``start + step * arange(size)`` modulo the period.
+
+        ``isel`` uses this to keep a RasterIndex for a run across the seam, e.g. ``[358, 359, 0, 1]``.
+        Else it returns ``None``, and ``isel`` drops the index as usual.
+        """
+        # 1. Accept only a 1-D integer indexer along this dimension, with at least 2 positions.
+        if isinstance(idxer, Variable):
+            if idxer.dims != (self.dim,):
+                return None
+            idxer = idxer.values
+        idx = np.asarray(idxer)
+        if idx.ndim != 1 or idx.size < 2 or not np.issubdtype(idx.dtype, np.integer):
+            return None
+        P = self.axis_transform.period_cells
+        assert P is not None
+        n = self.axis_transform.size
+
+        # 2. Get the start. On a global axis (n == P), keep a negative first position: it means one
+        #    period left of the extent (periodic_slice_indexer returns this for slice(-190, -170)).
+        #    On a subset, a negative position counts from the end, as in numpy.
+        first = int(idx[0])
+        start = first if n == P or first >= 0 else first + n
+
+        # 3. Make all positions non-negative, then take the steps between neighbours modulo P.
+        #    All steps must be +1, or all must be -1 (P - 1 modulo P).
+        steps = np.diff(np.where(idx < 0, idx + n, idx)) % P
+        if steps[0] not in (1, P - 1) or np.any(steps != steps[0]):
+            return None
+        return start, int(idx.size), (1 if steps[0] == 1 else -1)
+
     def isel(  # type: ignore[override]
         self, indexers: Mapping[Any, int | slice | np.ndarray | Variable]
     ) -> AxisAffineTransformIndex | None:
@@ -327,6 +521,9 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
         # generate a new index with updated transform if a slice is given
         if isinstance(idxer, slice):
             return AxisAffineTransformIndex(self.axis_transform.slice(idxer))
+        # a periodic run (e.g. across the seam) keeps an unwrapped affine
+        elif self.axis_transform.period_cells is not None and (run := self._periodic_run(idxer)) is not None:
+            return AxisAffineTransformIndex(self.axis_transform.run(*run))
         # no index for vectorized (fancy) indexing with n-dimensional Variable
         elif isinstance(idxer, Variable) and idxer.ndim > 1:
             return None
@@ -350,6 +547,21 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
         label = labels[coord_name]
         transform = self.axis_transform
         if isinstance(label, slice):
+            if transform.period_cells is not None and label.step is None:
+                if label.start is not None and label.stop is not None:
+                    return IndexSelResult({self.dim: transform.periodic_slice_indexer(label)})
+                if (label.start is None) != (label.stop is None):
+                    # half-open: wrap only a label outside the extent edges (a label on an edge
+                    # is inside, as without a period); round upwards as below
+                    end = label.stop if label.start is None else label.start
+                    pos = transform._positions(end)
+                    if not -0.5 <= pos <= transform.size - 0.5:
+                        pos = transform._wrap(pos)
+                    pos = int(np.floor(pos + 0.5))
+                    pos = max(min(pos, transform.size), 0)
+                    if label.start is None:
+                        return IndexSelResult({self.dim: slice(0, min(pos + 1, transform.size))})
+                    return IndexSelResult({self.dim: slice(pos, transform.size)})
             # Use 'is None' check instead of 'or' to correctly handle 0 values
             label = slice(
                 transform.forward({coord_name: 0})[coord_name] if label.start is None else label.start,
@@ -360,9 +572,9 @@ class AxisAffineTransformIndex(CoordinateTransformIndex):
             )
             if label.step is None:
                 # continuous interval slice indexing (preserves the index)
-                pos = self.transform.reverse({coord_name: np.array([label.start, label.stop])})
+                pos = self.axis_transform._positions(np.array([label.start, label.stop]))
                 # np.round rounds to even, this way we round upwards
-                pos = np.floor(pos[self.dim] + 0.5).astype("int")
+                pos = np.floor(pos + 0.5).astype("int")
                 size = self.axis_transform.size
                 # Clamp both start and stop to valid range [0, size]
                 new_start = max(min(pos[0], size), 0)
@@ -515,6 +727,23 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         assert not self._axis_independent
         return cast(CoordinateTransformIndex, self._index)
 
+    def _periods(self) -> tuple[float | None, float | None]:
+        """(x, y) periods; ``(None, None)`` for coupled x/y transforms."""
+        if not self._axis_independent:
+            return (None, None)
+        x, y = self._xy_indexes
+        return x.axis_transform.period, y.axis_transform.period
+
+    @property
+    def x_period(self) -> float | None:
+        """Period of the X axis in coordinate units, or ``None`` if it does not wrap."""
+        return self._periods()[XAXIS]
+
+    @property
+    def y_period(self) -> float | None:
+        """Period of the Y axis in coordinate units, or ``None`` if it does not wrap."""
+        return self._periods()[YAXIS]
+
     @property
     def xy_shape(self) -> tuple[int, int]:
         """Return the dimension size of the X and Y axis, respectively."""
@@ -545,6 +774,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         x_coord_name: str = "xc",
         y_coord_name: str = "yc",
         crs: CRS | Any | None = None,
+        x_period: float | None = None,
+        y_period: float | None = None,
     ) -> RasterIndex:
         """Create a RasterIndex from an affine transform and raster dimensions.
 
@@ -568,6 +799,12 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         crs : :class:`pyproj.crs.CRS` or any, optional
             The coordinate reference system. Any value accepted by
             :meth:`pyproj.crs.CRS.from_user_input`.
+
+        x_period, y_period : float, optional
+            Period of the x / y axis in coordinate units (e.g. 360 for longitude). Enables
+            wraparound in ``sel``, ``isel`` and ``concat``. ``period / |dx|`` must be an
+            integer to within ``period_atol`` / ``period_rtol`` (see :py:func:`rasterix.set_options`),
+            and the axis must not have more cells than one period.
 
         Returns
         -------
@@ -594,19 +831,59 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         ...     Affine.rotation(45), width=100, height=100, x_coord_name="x1", y_coord_name="x2"
         ... )
         """
+        index = cls._from_transform(
+            affine,
+            width=width,
+            height=height,
+            x_dim=x_dim,
+            y_dim=y_dim,
+            x_coord_name=x_coord_name,
+            y_coord_name=y_coord_name,
+            crs=crs,
+            x_period=x_period,
+            y_period=y_period,
+        )
+        if index._axis_independent:
+            for idx in index._xy_indexes:
+                t = idx.axis_transform
+                if t.period_cells is not None and t.size > t.period_cells:
+                    raise ValueError(
+                        f"The {t.dim!r} axis has {t.size} cells, but one period has {t.period_cells}. "
+                        f"Drop the duplicate seam cells first, e.g. ``.isel({t.dim}=slice(0, {t.period_cells}))``."
+                    )
+        return index
+
+    @classmethod
+    def _from_transform(
+        cls,
+        affine: Affine,
+        *,
+        width: int,
+        height: int,
+        x_dim: str = "x",
+        y_dim: str = "y",
+        x_coord_name: str = "xc",
+        y_coord_name: str = "yc",
+        crs: CRS | Any | None = None,
+        x_period: float | None = None,
+        y_period: float | None = None,
+    ) -> RasterIndex:
+        """``from_transform`` without the ``size <= period`` check; for derived indexes."""
         index: WrappedIndex
 
         # pixel centered coordinates
         affine = affine * Affine.translation(0.5, 0.5)
 
         if affine.is_rectilinear and affine.b == affine.d == 0:
-            x_transform = AxisAffineTransform(affine, width, x_dim, x_dim, is_xaxis=True)
-            y_transform = AxisAffineTransform(affine, height, y_dim, y_dim, is_xaxis=False)
+            x_transform = AxisAffineTransform(affine, width, x_dim, x_dim, is_xaxis=True, period=x_period)
+            y_transform = AxisAffineTransform(affine, height, y_dim, y_dim, is_xaxis=False, period=y_period)
             index = (
                 AxisAffineTransformIndex(x_transform),
                 AxisAffineTransformIndex(y_transform),
             )
         else:
+            if x_period is not None or y_period is not None:
+                raise NotImplementedError("period is only supported for rectilinear affine transforms.")
             xy_transform = AffineTransform(
                 affine,
                 width,
@@ -1006,6 +1283,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         if len(indexes) == 1:
             return next(iter(indexes))
 
+        _assert_periods_equal(*indexes)
+
         if positions is not None:
             raise NotImplementedError
 
@@ -1017,9 +1296,10 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
     def _new_with_bbox(self, bbox: BoundingBox) -> RasterIndex:
         affine = self.transform()
         new_affine, Nx, Ny = bbox_to_affine(bbox, affine)
+        x_period, y_period = self._periods()
         x_dim, y_dim = self._xy_dims
         x_coord_name, y_coord_name = self._xy_coord_names
-        new_index = self.from_transform(
+        new_index = self._from_transform(
             new_affine,
             width=Nx,
             height=Ny,
@@ -1028,6 +1308,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
             x_coord_name=str(x_coord_name),
             y_coord_name=str(y_coord_name),
             crs=self._crs,
+            x_period=x_period,
+            y_period=y_period,
         )
         # snap_grid round-off is ~ulp(coordinate): use a tolerance scaled by pixel size and extent
         tx = _axis_tol(affine.a, bbox.left, bbox.right)
@@ -1049,6 +1331,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
                 f"first index:\n{self!r}\n\nsecond index:\n{other!r}"
             )
 
+        _assert_periods_equal(self, other)
+
         if len(self._wrapped_indexes) != len(other._wrapped_indexes):
             # TODO: better error message
             raise ValueError(
@@ -1056,6 +1340,7 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
             )
 
         ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
+        _assert_same_frame(ours, theirs, self)
         if how == "outer":
             new_bbox = ours | theirs
         elif how == "inner":
@@ -1068,7 +1353,9 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
     def reindex_like(self, other: Self, method=None, tolerance=None) -> dict[Hashable, Any]:
         x_dim, y_dim = self.xy_dims
         affine = self.transform()
+        _assert_periods_equal(self, other)
         ours, theirs = as_compatible_bboxes(self, other, concat_dim=None)
+        _assert_same_frame(ours, theirs, self)
         inter = bbox_intersection([ours, theirs])
         dx = affine.a
         dy = affine.e
@@ -1092,8 +1379,14 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         if max_width is None:
             max_width = get_options()["display_width"]
 
-        srs = xproj.format_crs(self.crs, max_width=max_width)
-        return f"{self.__class__.__name__} (crs={srs})"
+        periods = "".join(
+            f", {name}={period:.4g}"
+            for name, period in zip(("x_period", "y_period"), self._periods())
+            if period is not None
+        )
+        # reserve room for the periods; CRS is the part that truncates
+        srs = xproj.format_crs(self.crs, max_width=max_width - len(periods))
+        return f"{self.__class__.__name__} (crs={srs}{periods})"
 
     def __repr__(self) -> str:
         srs = xproj.format_crs(self.crs)
@@ -1149,19 +1442,31 @@ def bbox_to_affine(bbox: BoundingBox, affine: Affine) -> tuple[Affine, int, int]
     return new_affine, nx, ny
 
 
+def _unwrap_offsets(offsets: list[float], sizes: list[int], spacing: float, period: float) -> list[float]:
+    """Move each offset by k * period to the end of the previous tile, if possible."""
+    out = [offsets[0]]
+    for off, prev_size in zip(offsets[1:], sizes[:-1]):
+        expected = out[-1] + prev_size * spacing
+        out.append(off + round((expected - off) / period) * period)
+    return out
+
+
 def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> tuple[BoundingBox, ...]:
     transforms = tuple(i.transform() for i in indexes)
     _assert_transforms_are_compatible(*transforms)
 
-    expected_off_x = (transforms[0].c,) + tuple(
-        t.c + i.xy_shape[XAXIS] * t.a for i, t in zip(indexes[:-1], transforms[:-1])
-    )
-    expected_off_y = (transforms[0].f,) + tuple(
-        t.f + i.xy_shape[YAXIS] * t.e for i, t in zip(indexes[:-1], transforms[:-1])
-    )
+    # note: Xarray alignment already ensures that the indexes dimensions are compatible.
+    x_dim, y_dim = indexes[0].xy_dims
+    x_period, y_period = indexes[0]._periods()
 
-    off_x = tuple(t.c for t in transforms)
-    off_y = tuple(t.f for t in transforms)
+    off_x = [t.c for t in transforms]
+    off_y = [t.f for t in transforms]
+
+    # periodic axis: tiles across the seam become contiguous (unwrapped)
+    if concat_dim == x_dim and x_period is not None:
+        off_x = _unwrap_offsets(off_x, [i.xy_shape[XAXIS] for i in indexes], transforms[0].a, x_period)
+    if concat_dim == y_dim and y_period is not None:
+        off_y = _unwrap_offsets(off_y, [i.xy_shape[YAXIS] for i in indexes], transforms[0].e, y_period)
 
     tol_x = _axis_tol(
         transforms[0].a, *off_x, *(o + i.xy_shape[XAXIS] * transforms[0].a for o, i in zip(off_x, indexes))
@@ -1170,21 +1475,26 @@ def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> 
         transforms[0].e, *off_y, *(o + i.xy_shape[YAXIS] * transforms[0].e for o, i in zip(off_y, indexes))
     )
 
+    # after the unwrap: the pad case [full] + [head] has equal raw offsets, but is valid
     if concat_dim is not None:
         if all(_isclose(o, off_x[0], atol=tol_x) for o in off_x[1:]) and all(
             _isclose(o, off_y[0], atol=tol_y) for o in off_y[1:]
         ):
             raise ValueError("Attempting to concatenate arrays with same transform along X or Y.")
 
-    # note: Xarray alignment already ensures that the indexes dimensions are compatible.
-    x_dim, y_dim = indexes[0].xy_dims
+    expected_off_x = (off_x[0],) + tuple(
+        o + i.xy_shape[XAXIS] * t.a for o, i, t in zip(off_x[:-1], indexes[:-1], transforms[:-1])
+    )
+    expected_off_y = (off_y[0],) + tuple(
+        o + i.xy_shape[YAXIS] * t.e for o, i, t in zip(off_y[:-1], indexes[:-1], transforms[:-1])
+    )
 
     if concat_dim == x_dim:
         if any(not _isclose(off_y[0], o, atol=tol_y) for o in off_y[1:]):
             raise ValueError("offsets must be identical in Y when concatenating along X")
         if any(not _isclose(a, b, atol=tol_x) for a, b in zip(off_x, expected_off_x)):
             raise ValueError(
-                f"X offsets are incompatible. Provided offsets {off_x}, expected offsets: {expected_off_x}"
+                f"X offsets are incompatible. Provided offsets {tuple(off_x)}, expected offsets: {expected_off_x}"
             )
     elif concat_dim == y_dim:
         if any(not _isclose(off_x[0], o, atol=tol_x) for o in off_x[1:]):
@@ -1192,7 +1502,15 @@ def as_compatible_bboxes(*indexes: RasterIndex, concat_dim: Hashable | None) -> 
 
         if any(not _isclose(a, b, atol=tol_y) for a, b in zip(off_y, expected_off_y)):
             raise ValueError(
-                f"Y offsets are incompatible. Provided offsets {off_y}, expected offsets: {expected_off_y}"
+                f"Y offsets are incompatible. Provided offsets {tuple(off_y)}, expected offsets: {expected_off_y}"
             )
 
-    return tuple(i.bbox for i in indexes)
+    return tuple(
+        BoundingBox(
+            i.bbox.left + (ox - t.c),
+            i.bbox.bottom + (oy - t.f),
+            i.bbox.right + (ox - t.c),
+            i.bbox.top + (oy - t.f),
+        )
+        for i, t, ox, oy in zip(indexes, transforms, off_x, off_y)
+    )
