@@ -308,6 +308,17 @@ def coverage(
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
     affine = _get_affine(obj, x_dim=xdim, y_dim=ydim)
+    if affine.e > 0:
+        # exactextract assumes north-up; compute on the flipped grid and flip back.
+        flip = {ydim: slice(None, None, -1)}
+        return coverage(
+            obj.isel(flip),
+            geometries,
+            xdim=xdim,
+            ydim=ydim,
+            strategy=strategy,
+            coverage_weight=coverage_weight,
+        ).isel(flip)
     shape = (obj.sizes[ydim], obj.sizes[xdim])
 
     if is_in_memory(obj=obj, geometries=geometries):
@@ -370,8 +381,7 @@ def coverage(
         for c in xy_coords:
             coords = coords.merge(c)
         coords = coords.coords
-    coverage = xr.DataArray(dims=("geometry", ydim, xdim), data=out, coords=coords, attrs=attrs, name=name)
-    return coverage
+    return xr.DataArray(dims=("geometry", ydim, xdim), data=out, coords=coords, attrs=attrs, name=name)
 
 
 # ============================================================================
