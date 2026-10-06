@@ -22,3 +22,34 @@ Our intent is to provide reusable building blocks for the many sub-ecosystems ar
 ```
 pip install rasterix
 ```
+
+## Building Documentation Locally
+
+Install the package with documentation dependencies:
+
+```
+pip install -e ".[docs]"
+```
+
+Build the HTML docs:
+
+```
+cd docs
+make html
+```
+
+Open `docs/_build/html/index.html` in your browser to view the result.
+
+For a live-reload development server that rebuilds on changes:
+
+```
+cd docs
+make livehtml
+```
+
+To also open the docs in your browser automatically:
+
+```
+cd docs
+make livehtml SPHINXOPTS="--open-browser"
+```
