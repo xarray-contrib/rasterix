@@ -6,6 +6,7 @@ import geopandas as gpd
 import hypothesis.strategies as st
 import numpy as np
 import numpy.testing as npt
+import pytest
 import sparse
 import xarray as xr
 import xarray.testing as xrt
@@ -142,3 +143,16 @@ def test_coverage_weights(
     if "area_spherical" not in coverage_weight:
         assert expected.nnz == actual_sparse.nnz
     xrt.assert_equal(dataset["spatial_ref"], actual["spatial_ref"])
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+def test_coverage_ascending_y(chunked):
+    # dataset has descending y; flip it and expect the flipped result.
+    flipped = dataset.isel(y=slice(None, None, -1))
+    if chunked:
+        flipped = flipped.chunk(y=100, x=200)
+
+    expected = coverage(dataset, world[["geometry"]]).isel(y=slice(None, None, -1))
+    actual = coverage(flipped, world[["geometry"]])
+
+    npt.assert_equal(expected.data.todense(), actual.compute().data.todense())

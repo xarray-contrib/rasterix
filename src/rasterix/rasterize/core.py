@@ -234,6 +234,20 @@ def rasterize(
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
     affine = _get_affine(obj, x_dim=xdim, y_dim=ydim)
+    if affine.e > 0:
+        # Engines assume north-up; rasterize the flipped grid and flip back.
+        flip = {ydim: slice(None, None, -1)}
+        return rasterize(
+            obj.isel(flip),
+            geometries,
+            engine=engine,
+            xdim=xdim,
+            ydim=ydim,
+            all_touched=all_touched,
+            merge_alg=merge_alg,
+            geoms_rechunk_size=geoms_rechunk_size,
+            **engine_kwargs,
+        ).isel(flip)
     engine_merge_alg = _normalize_merge_alg(merge_alg, resolved_engine)
 
     rasterize_geometries, dask_rasterize_wrapper = _get_rasterize_funcs(resolved_engine)
@@ -382,6 +396,20 @@ def geometry_mask(
         obj = clip_to_bbox(obj, geometries, xdim=xdim, ydim=ydim)
 
     affine = _get_affine(obj, x_dim=xdim, y_dim=ydim)
+    if affine.e > 0:
+        # Engines assume north-up; mask the flipped grid and flip back.
+        flip = {ydim: slice(None, None, -1)}
+        return geometry_mask(
+            obj.isel(flip),
+            geometries,
+            engine=engine,
+            xdim=xdim,
+            ydim=ydim,
+            all_touched=all_touched,
+            invert=invert,
+            geoms_rechunk_size=geoms_rechunk_size,
+            **engine_kwargs,
+        ).isel(flip)
 
     np_geometry_mask, dask_mask_wrapper = _get_mask_funcs(resolved_engine)
 

@@ -154,3 +154,19 @@ def test_geometry_mask_with_raster_index(engine, raster_index_dataset, dataset):
     xr.testing.assert_equal(result, expected)
     assert isinstance(result.xindexes["longitude"], RasterIndex)
     assert isinstance(result.xindexes["latitude"], RasterIndex)
+
+
+@pytest.mark.parametrize("chunked", [False, True])
+@pytest.mark.parametrize("func", [rasterize, geometry_mask])
+def test_ascending_y(engine, dataset, func, chunked):
+    # dataset has descending latitude; flip it and expect the flipped result.
+    world = gpd.read_file(geodatasets.get_path("naturalearth land"))
+    kwargs = dict(xdim="longitude", ydim="latitude", engine=engine)
+    flipped = dataset.isel(latitude=slice(None, None, -1))
+    if chunked:
+        flipped = flipped.chunk(latitude=100, longitude=200)
+
+    expected = func(dataset, world[["geometry"]], **kwargs).isel(latitude=slice(None, None, -1))
+    result = func(flipped, world[["geometry"]], **kwargs)
+
+    xr.testing.assert_equal(result.compute(), expected)
