@@ -6,6 +6,7 @@ from collections.abc import Hashable, Iterable, Mapping, Sequence
 from typing import Any, Self, TypeVar, cast
 
 import numpy as np
+import numpy.typing as npt
 import pandas as pd
 import xproj
 from affine import Affine
@@ -209,6 +210,19 @@ def _assert_same_frame(ours: BoundingBox, theirs: BoundingBox, index: RasterInde
                 )
 
 
+def _containing_cells(
+    positions: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.bool_]]:
+    """Cell ``i`` whose cell-center positions are ``[i - 0.5, i + 0.5)``, and a mask of usable positions.
+
+    NaN, inf and positions too large for exact int64 cells are not usable; their cell is 0. No bounds check.
+    """
+    positions = np.asarray(positions, dtype=np.float64)
+    valid = np.abs(positions) < 2.0**53
+    cells = np.floor(np.where(valid, positions, 0.0) + 0.5).astype(np.int64)
+    return cells, valid
+
+
 class AffineTransform(CoordinateTransform):
     """Affine 2D transform wrapper."""
 
@@ -311,7 +325,7 @@ class AxisAffineTransform(CoordinateTransform):
 
         return {self.coord_name: labels}
 
-    def _positions(self, labels: Any) -> np.ndarray:
+    def _positions(self, labels: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Unwrapped (float) cell positions of ``labels``."""
         labels = np.asarray(labels)
         if self.is_xaxis:
@@ -320,7 +334,7 @@ class AxisAffineTransform(CoordinateTransform):
             _, positions = ~self.affine * (np.zeros_like(labels), labels)
         return positions
 
-    def _wrap(self, positions: np.ndarray) -> np.ndarray:
+    def _wrap(self, positions: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Exact position wins; else wrap into [-0.5, P - 0.5) so that rounding gives [0, P)."""
         assert self.period_cells is not None
         positions = np.asarray(positions, dtype=np.float64)
@@ -395,6 +409,16 @@ class AxisAffineTransform(CoordinateTransform):
         if np.all(np.diff(positions) == 1):
             return slice(int(positions[0]), int(positions[-1]) + 1)
         return positions
+
+    def get_indexer(self, labels: npt.ArrayLike) -> npt.NDArray[np.int64]:
+        """Index of the cell that contains each label, or -1; see :py:meth:`RasterIndex.get_indexer`."""
+        with np.errstate(invalid="ignore"):  # inf * 0 for the other axis
+            positions = self._positions(np.asarray(labels, dtype=np.float64))
+        cells, valid = _containing_cells(positions)
+        if self.period_cells is not None:
+            # wrap the integer cell, not the float position: no round-off at the seam
+            cells = np.mod(cells, self.period_cells)
+        return np.where(valid & (cells >= 0) & (cells < self.size), cells, -1)
 
     def reverse(self, coord_labels: dict[Hashable, Any]) -> dict[str, Any]:
         positions = self._positions(coord_labels[self.coord_name])
@@ -652,6 +676,8 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
         Get affine transform for pixel top-left corners.
     center_transform
         Get affine transform for pixel centers.
+    get_indexer
+        Find the cell that contains each point, or -1.
 
     Examples
     --------
@@ -1202,6 +1228,78 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
                     results.append(res)
 
             return merge_sel_results(results)
+
+    def get_indexer(self, labels: Mapping[Hashable, npt.ArrayLike]) -> dict[str, npt.NDArray[np.int64]]:
+        """Find the cell that contains each point.
+
+        This follows :py:meth:`pandas.Index.get_indexer`: a point that is not in any cell
+        gives ``-1``. Unlike ``sel(..., method="nearest")``, a point outside the extent is
+        not snapped to the nearest edge cell.
+
+        Parameters
+        ----------
+        labels : mapping of coordinate name to array-like
+            Point coordinates, keyed by coordinate name (as for :py:meth:`sel`). For a
+            rectilinear transform, give the X labels, the Y labels or both; each axis is
+            looked up independently. For a rotated or skewed transform, give both, with the
+            same shape.
+
+        Returns
+        -------
+        dict of str to numpy.ndarray
+            ``int64`` cell positions, keyed by dimension name, with the shape of the input
+            labels. ``-1`` for a point outside the extent, and for NaN or inf.
+
+        Notes
+        -----
+        Let ``p`` be the position of a point in the corner-based pixel space of
+        :py:meth:`transform`. The point is in cell ``i`` if ``i <= p < i + 1``. That is, a
+        cell includes the edge at its lower position and excludes the edge at its higher
+        position. For a north-up raster (negative ``e``), a cell includes its top edge and
+        excludes its bottom edge, and the bottom edge of the raster is outside it. Away
+        from cell edges, the result is the same as ``sel(..., method="nearest")``.
+
+        On a periodic axis (``x_period`` or ``y_period``), a point is first wrapped by a
+        whole number of periods; a point outside one period is not a miss.
+
+        Examples
+        --------
+        >>> from affine import Affine
+        >>> index = RasterIndex.from_transform(Affine(1, 0, -10, 0, -1, 10), width=20, height=20)
+        >>> index.get_indexer({"x": [-9.5, 9.99, 10.0, 180.0]})
+        {'x': array([ 0, 19, -1, -1])}
+        """
+        if self._axis_independent:
+            unknown = set(labels) - set(self.xy_coord_names)
+            if unknown:
+                raise KeyError(f"No coordinate(s) {sorted(map(str, unknown))} in this RasterIndex.")
+            return {
+                index.dim: index.axis_transform.get_indexer(labels[index.axis_transform.coord_name])
+                for index in self._xy_indexes
+                if index.axis_transform.coord_name in labels
+            }
+
+        x_name, y_name = self.xy_coord_names
+        if set(labels) != {x_name, y_name}:
+            raise ValueError(
+                f"A rotated or skewed RasterIndex needs both coordinates {x_name!r} and {y_name!r}, "
+                f"got {sorted(map(str, labels))}."
+            )
+        x = np.asarray(labels[x_name], dtype=np.float64)
+        y = np.asarray(labels[y_name], dtype=np.float64)
+        if x.shape != y.shape:
+            raise ValueError(
+                f"Labels for {x_name!r} and {y_name!r} must have the same shape, got {x.shape} and {y.shape}."
+            )
+        transform = cast(AffineTransform, self._xxyy_index.transform)
+        with np.errstate(invalid="ignore"):
+            positions = transform.reverse({x_name: x, y_name: y})
+        x_dim, y_dim = self.xy_dims
+        x_cells, x_valid = _containing_cells(positions[x_dim])
+        y_cells, y_valid = _containing_cells(positions[y_dim])
+        width, height = self.xy_shape
+        hit = x_valid & y_valid & (x_cells >= 0) & (x_cells < width) & (y_cells >= 0) & (y_cells < height)
+        return {x_dim: np.where(hit, x_cells, -1), y_dim: np.where(hit, y_cells, -1)}
 
     def equals(self, other: Index, *, exclude=None) -> bool:
         if exclude is None:
