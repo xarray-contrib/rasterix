@@ -210,7 +210,9 @@ def _assert_same_frame(ours: BoundingBox, theirs: BoundingBox, index: RasterInde
                 )
 
 
-def _containing_cells(positions: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _containing_cells(
+    positions: npt.NDArray[np.float64],
+) -> tuple[npt.NDArray[np.int64], npt.NDArray[np.bool_]]:
     """Cell ``i`` whose cell-center positions are ``[i - 0.5, i + 0.5)``, and a mask of usable positions.
 
     NaN, inf and positions too large for exact int64 cells are not usable; their cell is 0. No bounds check.
@@ -323,7 +325,7 @@ class AxisAffineTransform(CoordinateTransform):
 
         return {self.coord_name: labels}
 
-    def _positions(self, labels: Any) -> np.ndarray:
+    def _positions(self, labels: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Unwrapped (float) cell positions of ``labels``."""
         labels = np.asarray(labels)
         if self.is_xaxis:
@@ -332,7 +334,7 @@ class AxisAffineTransform(CoordinateTransform):
             _, positions = ~self.affine * (np.zeros_like(labels), labels)
         return positions
 
-    def _wrap(self, positions: np.ndarray) -> np.ndarray:
+    def _wrap(self, positions: npt.ArrayLike) -> npt.NDArray[np.float64]:
         """Exact position wins; else wrap into [-0.5, P - 0.5) so that rounding gives [0, P)."""
         assert self.period_cells is not None
         positions = np.asarray(positions, dtype=np.float64)
@@ -408,7 +410,7 @@ class AxisAffineTransform(CoordinateTransform):
             return slice(int(positions[0]), int(positions[-1]) + 1)
         return positions
 
-    def get_indexer(self, labels: Any) -> np.ndarray:
+    def get_indexer(self, labels: npt.ArrayLike) -> npt.NDArray[np.int64]:
         """Index of the cell that contains each label, or -1; see :py:meth:`RasterIndex.get_indexer`."""
         with np.errstate(invalid="ignore"):  # inf * 0 for the other axis
             positions = self._positions(np.asarray(labels, dtype=np.float64))
@@ -1227,7 +1229,7 @@ class RasterIndex(Index, xproj.ProjIndexMixin):
 
             return merge_sel_results(results)
 
-    def get_indexer(self, labels: Mapping[Hashable, npt.ArrayLike]) -> dict[str, np.ndarray]:
+    def get_indexer(self, labels: Mapping[Hashable, npt.ArrayLike]) -> dict[str, npt.NDArray[np.int64]]:
         """Find the cell that contains each point.
 
         This follows :py:meth:`pandas.Index.get_indexer`: a point that is not in any cell
