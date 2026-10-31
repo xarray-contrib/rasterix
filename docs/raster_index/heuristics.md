@@ -4,11 +4,20 @@
 
 | Priority | Source                                 | Location                                      | Reference                                                                                               |
 | -------- | -------------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| 0        | Existing `RasterIndex`                 | Index already on the x/y dims                 | Built at open time by some backends, e.g. gdalxarray                                                    |
 | 1        | `GeoTransform`                         | CF grid mapping variable (e.g. `spatial_ref`) | [GDAL GeoTransform](https://gdal.org/en/stable/tutorials/geotransforms_tut.html)                        |
 | 2        | `proj:transform`                       | DataArray `.attrs`                            | [STAC Projection Extension](https://github.com/stac-extensions/projection)                              |
 | 3        | `model_tiepoint` + `model_pixel_scale` | DataArray `.attrs`                            | [GeoTIFF spec](https://docs.ogc.org/is/19-008r4/19-008r4.html)                                          |
 | 4        | `spatial:transform`                    | DataArray, data variable, or Dataset `.attrs` | [Zarr Spatial Convention](https://zarr-specs.readthedocs.io/en/latest/v3/conventions/spatial/v1.0.html) |
 | 5        | 1D coordinate arrays                   | Coordinate variables for x/y dims             | Common in NetCDF                                                                                        |
+
+## Existing RasterIndex
+
+For priority 0, if the object already has a single {py:class}`~rasterix.RasterIndex` (or one over the requested `x_dim`/`y_dim`), its affine transform and periods are reused and only the CRS is (re)detected. Backends such as [gdalxarray](https://github.com/hypertidy/gdalxarray) build the RasterIndex directly from GDAL's geotransform in classic-raster mode, so calling `assign_index` on their output keeps rotated and sheared transforms, whose 2D coordinates the coordinate fallback cannot read.
+
+## Dimension detection
+
+When `x_dim`/`y_dim` are not given, they are taken from an existing RasterIndex, then from `spatial:dimensions` (see below), then from these dimension-name pairs in order: `x`/`y`, `longitude`/`latitude`, `X`/`Y` (the names GDAL's multidimensional API gives classic rasters), `lon`/`lat`. Failing those, 1D dimension coordinates are matched on the CF `axis`, `standard_name` or `units` (`degrees_east`/`degrees_north`) attributes. If neither dimension can be determined a `ValueError` asks for them explicitly.
 
 ## Grid mapping variable lookup
 
