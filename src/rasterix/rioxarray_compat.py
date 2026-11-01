@@ -194,31 +194,55 @@
 
 from xarray.core.types import T_Xarray
 
+# (x, y) dimension-name pairs tried in order before falling back to CF attributes.
+# "X"/"Y" are the dimension names GDAL's multidimensional API gives classic rasters
+# (e.g. GeoTIFF-derived Zarr or VRT opened with gdalxarray), usually without CF attributes.
+_XY_DIM_NAMES = (
+    ("x", "y"),
+    ("longitude", "latitude"),
+    ("X", "Y"),
+    ("lon", "lat"),
+)
+_X_STANDARD_NAMES = ("longitude", "projection_x_coordinate", "grid_longitude")
+_Y_STANDARD_NAMES = ("latitude", "projection_y_coordinate", "grid_latitude")
+_X_UNITS = ("degrees_east", "degree_east", "degree_e", "degrees_e")
+_Y_UNITS = ("degrees_north", "degree_north", "degree_n", "degrees_n")
+
 
 def guess_dims(obj: T_Xarray) -> tuple[str, str]:
-    # Determine the spatial dimensions of the `xarray.DataArray`
-    if "x" in obj.dims and "y" in obj.dims:
-        x_dim = "x"
-        y_dim = "y"
-    elif "longitude" in obj.dims and "latitude" in obj.dims:
-        x_dim = "longitude"
-        y_dim = "latitude"
-    else:
-        # look for coordinates with CF attributes
-        for coord in obj.coords:
-            # make sure to only look in 1D coordinates
-            # that has the same dimension name as the coordinate
-            if obj.coords[coord].dims != (coord,):
-                continue
-            if (obj.coords[coord].attrs.get("axis", "").upper() == "X") or (
-                obj.coords[coord].attrs.get("standard_name", "").lower()
-                in ("longitude", "projection_x_coordinate")
-            ):
-                x_dim = coord
-            elif (obj.coords[coord].attrs.get("axis", "").upper() == "Y") or (
-                obj.coords[coord].attrs.get("standard_name", "").lower()
-                in ("latitude", "projection_y_coordinate")
-            ):
-                y_dim = coord
+    """Determine the spatial (x, y) dimension names of an Xarray object.
 
+    Tries common dimension names first, then CF ``axis``, ``standard_name`` and
+    ``units`` attributes on 1D dimension coordinates.
+
+    Raises
+    ------
+    ValueError
+        If either dimension cannot be determined.
+    """
+    for x_name, y_name in _XY_DIM_NAMES:
+        if x_name in obj.dims and y_name in obj.dims:
+            return x_name, y_name
+
+    x_dim = y_dim = None
+    # look for coordinates with CF attributes
+    for coord in obj.coords:
+        # make sure to only look in 1D coordinates
+        # that has the same dimension name as the coordinate
+        if obj.coords[coord].dims != (coord,):
+            continue
+        attrs = obj.coords[coord].attrs
+        axis = str(attrs.get("axis", "")).upper()
+        standard_name = str(attrs.get("standard_name", "")).lower()
+        units = str(attrs.get("units", "")).lower()
+        if axis == "X" or standard_name in _X_STANDARD_NAMES or units in _X_UNITS:
+            x_dim = coord
+        elif axis == "Y" or standard_name in _Y_STANDARD_NAMES or units in _Y_UNITS:
+            y_dim = coord
+
+    if x_dim is None or y_dim is None:
+        raise ValueError(
+            f"Could not determine the x and y dimensions from dims {tuple(obj.dims)!r}: "
+            f"found x_dim={x_dim!r}, y_dim={y_dim!r}. Pass x_dim and y_dim explicitly."
+        )
     return x_dim, y_dim

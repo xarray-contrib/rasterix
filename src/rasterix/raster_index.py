@@ -51,9 +51,13 @@ def assign_index(
 ) -> T_Xarray:
     """Assign a RasterIndex to an Xarray DataArray or Dataset.
 
-    By default, the affine transform is guessed by first looking for a ``GeoTransform`` attribute
-    on a CF "grid mapping" variable (commonly ``"spatial_ref"``). If not present, then the affine is determined from 1D coordinate
-    variables named ``x_dim`` and ``y_dim`` provided to this function.
+    If ``obj`` already carries a RasterIndex over the x/y dimensions (for example, as
+    returned by a backend such as ``gdalxarray`` that builds one at open time), its affine
+    transform and periods are reused, so rotated and sheared transforms survive; the CRS is
+    then (re)detected. Otherwise, the affine transform is guessed by first looking for a
+    ``GeoTransform`` attribute on a CF "grid mapping" variable (commonly ``"spatial_ref"``).
+    If not present, then the affine is determined from 1D coordinate variables named
+    ``x_dim`` and ``y_dim`` provided to this function.
 
     Parameters
     ----------
@@ -95,11 +99,18 @@ def assign_index(
 
     Examples
     --------
+    Any xarray backend that exposes a GeoTransform or regular 1D x/y coordinates works,
+    for example rioxarray (``engine="rasterio"``) or gdalxarray (``engine="gdalxarray"``):
+
     >>> import xarray as xr
-    >>> import rioxarray  # Required for reading TIFF
-    >>> da = xr.open_dataset("path/to/raster.tif", engine="rasterio")
+    >>> da = xr.open_dataset("path/to/raster.tif", engine="rasterio")  # requires rioxarray
     >>> indexed_da = assign_index(da)
+    >>> ds = xr.open_dataset("path/to/raster.tif", engine="gdalxarray", multidim=False)
+    >>> indexed_ds = assign_index(ds)
     """
+    existing = _find_raster_index(obj, x_dim=x_dim, y_dim=y_dim)
+    if existing is not None:
+        x_dim, y_dim = existing.xy_dims
     if x_dim is None or y_dim is None:
         guessed = None
         for metadata, _ in _iter_spatial_zarr_metadata(obj):
@@ -113,11 +124,21 @@ def assign_index(
     x_dim = x_dim or guessed_x
     y_dim = y_dim or guessed_y
 
-    affine = get_affine(obj, x_dim=x_dim, y_dim=y_dim, clear_transform=True)
+    if existing is not None:
+        affine = existing.transform()
+        x_period = existing.x_period if x_period is None else x_period
+        y_period = existing.y_period if y_period is None else y_period
+        # drop the old index (and its coordinates, which may be 2D for rotated
+        # transforms) so the replacement is not merged with it
+        obj = obj.drop_vars(list(existing.xy_coord_names))
+    else:
+        affine = get_affine(obj, x_dim=x_dim, y_dim=y_dim, clear_transform=True)
 
     detected_crs = obj.proj.crs if crs else None
     if detected_crs is None:
         detected_crs = get_crs_from_proj_zarr_convention(obj)
+    if detected_crs is None and existing is not None and crs:
+        detected_crs = existing.crs
 
     index = RasterIndex.from_transform(
         affine,
@@ -131,6 +152,25 @@ def assign_index(
     )
     coords = Coordinates.from_xindex(index)
     return obj.assign_coords(coords)
+
+
+def _find_raster_index(
+    obj: DataArray | Dataset, *, x_dim: str | None = None, y_dim: str | None = None
+) -> RasterIndex | None:
+    """Return a RasterIndex already present on ``obj`` over the requested x/y dims, if any.
+
+    With ``x_dim``/``y_dim`` unset, a single RasterIndex is returned; several are ambiguous
+    and yield ``None`` so the usual dimension detection applies.
+    """
+    found = [idx for idx in obj.xindexes.get_unique() if isinstance(idx, RasterIndex)]
+    if x_dim is not None or y_dim is not None:
+        found = [
+            idx
+            for idx in found
+            if (x_dim is None or idx.xy_dims[XAXIS] == x_dim)
+            and (y_dim is None or idx.xy_dims[YAXIS] == y_dim)
+        ]
+    return found[0] if len(found) == 1 else None
 
 
 def _isclose(a: float, b: float, *, rtol: float | None = None, atol: float | None = None) -> bool:
